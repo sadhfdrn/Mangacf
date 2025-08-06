@@ -7,6 +7,7 @@ const path = require('path');
 const { promisify } = require('util');
 const { pipeline } = require('stream');
 const streamPipeline = promisify(pipeline);
+const FormData = require('form-data');
 
 // Create downloads directory if it doesn't exist
 const DOWNLOADS_DIR = path.join(__dirname, 'downloads');
@@ -16,6 +17,9 @@ if (!fs.existsSync(DOWNLOADS_DIR)) {
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Catbox configuration
+const CATBOX_USER_HASH = '630d80d5715d80cc0cfaa03ec';
 
 // Middleware
 app.use(express.json());
@@ -255,7 +259,46 @@ class MangaHere {
   }
 }
 
+// Catbox upload service
+class CatboxService {
+  constructor(userHash) {
+    this.userHash = userHash;
+    this.uploadUrl = 'https://catbox.moe/user/api.php';
+  }
+
+  async uploadFile(filePath, fileName) {
+    try {
+      const form = new FormData();
+      form.append('reqtype', 'fileupload');
+      form.append('userhash', this.userHash);
+      form.append('fileToUpload', fs.createReadStream(filePath), fileName);
+
+      const response = await axios.post(this.uploadUrl, form, {
+        headers: {
+          ...form.getHeaders(),
+        },
+        timeout: 300000 // 5 minutes timeout for large files
+      });
+
+      if (response.data && response.data.startsWith('https://files.catbox.moe/')) {
+        return response.data.trim();
+      } else {
+        throw new Error(`Upload failed: ${response.data}`);
+      }
+    } catch (error) {
+      throw new Error(`Catbox upload failed: ${error.message}`);
+    }
+  }
+
+  generateDownloadLink(catboxUrl, fileName, baseUrl) {
+    const encodedUrl = encodeURIComponent(catboxUrl);
+    const encodedFileName = encodeURIComponent(fileName);
+    return `${baseUrl}/rename?url=${encodedUrl}&filename=${encodedFileName}`;
+  }
+}
+
 const mangaHere = new MangaHere();
+const catboxService = new CatboxService(CATBOX_USER_HASH);
 
 // File cleanup system - delete files older than 48 hours
 const cleanupOldFiles = () => {
@@ -396,15 +439,22 @@ app.get('/', (req, res) => {
             <div class="endpoint">
                 <span class="method">GET</span>
                 <div class="url">/cbz/{mangaId}/{chapterId}</div>
-                <p><strong>Description:</strong> Generate and get download link for chapter CBZ file</p>
-                <p class="description">Returns a JSON response with download link for CBZ file containing all chapter pages</p>
+                <p><strong>Description:</strong> Generate CBZ file and upload to Catbox</p>
+                <p class="description">Creates CBZ file, uploads to Catbox, and returns download link with custom filename</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method">GET</span>
+                <div class="url">/rename?url={catboxUrl}&filename={customName}</div>
+                <p><strong>Description:</strong> Download file with custom filename</p>
+                <p class="description">Streams file from Catbox with your preferred filename (e.g., manga title)</p>
             </div>
             
             <div class="endpoint">
                 <span class="method">GET</span>
                 <div class="url">/download/{fileName}</div>
-                <p><strong>Description:</strong> Download CBZ file directly</p>
-                <p class="description">Direct download endpoint for CBZ files (files expire after 48 hours)</p>
+                <p><strong>Description:</strong> Download CBZ file directly (fallback)</p>
+                <p class="description">Direct download endpoint for local CBZ files (when Catbox upload fails)</p>
             </div>
             
             <h2>🚀 Example Usage</h2>
@@ -436,20 +486,22 @@ app.get('/', (req, res) => {
             <p><strong>Search Response:</strong> JSON with results array containing manga information</p>
             <p><strong>Info Response:</strong> JSON with detailed manga information and chapters list</p>
             <p><strong>Pages Response:</strong> JSON with all page URLs and headers for the chapter</p>
-            <p><strong>CBZ Response:</strong> JSON with download link and file information</p>
-            <p><strong>Download Response:</strong> Direct CBZ file download</p>
+            <p><strong>CBZ Response:</strong> JSON with Catbox URL and custom download link</p>
+            <p><strong>Rename Response:</strong> Direct file download with custom filename</p>
+            <p><strong>Download Response:</strong> Direct CBZ file download (fallback only)</p>
             
             <h2>⚠️ Important Notes</h2>
             
             <ul>
-                <li>CBZ files may take a few moments to generate depending on chapter length</li>
-                <li>Generated files are stored on server and expire after 48 hours</li>
-                <li>If a file already exists, you'll get the existing download link immediately</li>
+                <li>CBZ files are automatically uploaded to Catbox for permanent storage</li>
+                <li>Download links include custom filenames for better organization</li>
+                <li>Files are streamed directly from Catbox with your preferred filename</li>
+                <li>Local storage is used as fallback only when Catbox upload fails</li>
                 <li>Some chapters may be blocked due to copyright restrictions</li>
                 <li>Chapter IDs follow the format: {mangaId}/c{chapterNumber}</li>
                 <li>The /pages endpoint returns JSON with all page URLs for direct access</li>
-                <li>The /cbz endpoint generates CBZ files and returns download links</li>
-                <li>Use the /download endpoint to actually download the CBZ files</li>
+                <li>The /cbz endpoint generates files and uploads to Catbox automatically</li>
+                <li>Use the returned download link for files with proper .cbz extension</li>
             </ul>
             
             <div style="text-align: center; margin-top: 30px; padding: 20px; background: #2c3e50; color: white; border-radius: 5px;">
@@ -527,7 +579,7 @@ app.get('/pages/:mangaId/:chapterId', async (req, res) => {
   }
 });
 
-// CBZ endpoint - generates CBZ file and returns download link
+// CBZ endpoint - generates CBZ file and uploads to Catbox
 app.get('/cbz/:mangaId/:chapterId', async (req, res) => {
   try {
     const { mangaId, chapterId } = req.params;
@@ -540,20 +592,44 @@ app.get('/cbz/:mangaId/:chapterId', async (req, res) => {
     const fileName = `${mangaId}_${chapterId}.cbz`;
     const filePath = path.join(DOWNLOADS_DIR, fileName);
     
-    // Check if file already exists
+    // Check if file already exists locally
     if (fs.existsSync(filePath)) {
-      const stats = fs.statSync(filePath);
-      const downloadUrl = `${req.protocol}://${req.get('host')}/download/${fileName}`;
-      
-      return res.json({
-        success: true,
-        message: 'CBZ file already exists',
-        downloadUrl: downloadUrl,
-        fileName: fileName,
-        fileSize: `${(stats.size / 1024 / 1024).toFixed(2)} MB`,
-        createdAt: stats.mtime.toISOString(),
-        expiresAt: new Date(stats.mtime.getTime() + (48 * 60 * 60 * 1000)).toISOString()
-      });
+      try {
+        console.log(`File exists locally, uploading to Catbox: ${fileName}`);
+        const catboxUrl = await catboxService.uploadFile(filePath, fileName);
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const downloadUrl = catboxService.generateDownloadLink(catboxUrl, fileName, baseUrl);
+        
+        const stats = fs.statSync(filePath);
+        
+        // Clean up local file after successful upload
+        fs.unlinkSync(filePath);
+        
+        return res.json({
+          success: true,
+          message: 'CBZ file uploaded to Catbox',
+          downloadUrl: downloadUrl,
+          catboxUrl: catboxUrl,
+          fileName: fileName,
+          fileSize: `${(stats.size / 1024 / 1024).toFixed(2)} MB`,
+          uploadedAt: new Date().toISOString()
+        });
+      } catch (uploadError) {
+        console.error('Upload to Catbox failed:', uploadError);
+        // Fallback to local download if upload fails
+        const downloadUrl = `${req.protocol}://${req.get('host')}/download/${fileName}`;
+        const stats = fs.statSync(filePath);
+        
+        return res.json({
+          success: true,
+          message: 'CBZ file ready (upload failed, using local storage)',
+          downloadUrl: downloadUrl,
+          fileName: fileName,
+          fileSize: `${(stats.size / 1024 / 1024).toFixed(2)} MB`,
+          createdAt: stats.mtime.toISOString(),
+          expiresAt: new Date(stats.mtime.getTime() + (48 * 60 * 60 * 1000)).toISOString()
+        });
+      }
     }
     
     console.log(`Fetching pages for chapter: ${fullChapterId}`);
@@ -618,26 +694,103 @@ app.get('/cbz/:mangaId/:chapterId', async (req, res) => {
     
     console.log(`CBZ file created successfully for ${fullChapterId}`);
     
-    // Get file stats
+    // Get file stats and upload to Catbox
     const stats = fs.statSync(filePath);
-    const downloadUrl = `${req.protocol}://${req.get('host')}/download/${fileName}`;
     
-    res.json({
-      success: true,
-      message: 'CBZ file created successfully',
-      downloadUrl: downloadUrl,
-      fileName: fileName,
-      fileSize: `${(stats.size / 1024 / 1024).toFixed(2)} MB`,
-      totalPages: pages.length,
-      createdAt: stats.mtime.toISOString(),
-      expiresAt: new Date(stats.mtime.getTime() + (48 * 60 * 60 * 1000)).toISOString()
-    });
+    try {
+      console.log(`Uploading CBZ to Catbox: ${fileName}`);
+      const catboxUrl = await catboxService.uploadFile(filePath, fileName);
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const downloadUrl = catboxService.generateDownloadLink(catboxUrl, fileName, baseUrl);
+      
+      // Clean up local file after successful upload
+      fs.unlinkSync(filePath);
+      
+      res.json({
+        success: true,
+        message: 'CBZ file created and uploaded to Catbox',
+        downloadUrl: downloadUrl,
+        catboxUrl: catboxUrl,
+        fileName: fileName,
+        fileSize: `${(stats.size / 1024 / 1024).toFixed(2)} MB`,
+        totalPages: pages.length,
+        uploadedAt: new Date().toISOString()
+      });
+    } catch (uploadError) {
+      console.error('Upload to Catbox failed:', uploadError);
+      // Fallback to local download if upload fails
+      const downloadUrl = `${req.protocol}://${req.get('host')}/download/${fileName}`;
+      
+      res.json({
+        success: true,
+        message: 'CBZ file created (upload failed, using local storage)',
+        downloadUrl: downloadUrl,
+        fileName: fileName,
+        fileSize: `${(stats.size / 1024 / 1024).toFixed(2)} MB`,
+        totalPages: pages.length,
+        createdAt: stats.mtime.toISOString(),
+        expiresAt: new Date(stats.mtime.getTime() + (48 * 60 * 60 * 1000)).toISOString()
+      });
+    }
     
   } catch (error) {
     console.error('CBZ error:', error);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Failed to create CBZ file', message: error.message });
     }
+  }
+});
+
+// Rename endpoint - provides direct download with custom filename
+app.get('/rename', async (req, res) => {
+  try {
+    const { url, filename } = req.query;
+    
+    if (!url || !filename) {
+      return res.status(400).json({ error: 'Both url and filename parameters are required' });
+    }
+    
+    // Validate that it's a Catbox URL
+    if (!url.startsWith('https://files.catbox.moe/')) {
+      return res.status(400).json({ error: 'Only Catbox URLs are supported' });
+    }
+    
+    try {
+      // Fetch the file from Catbox
+      const response = await axios.get(url, {
+        responseType: 'stream',
+        timeout: 120000 // 2 minutes timeout
+      });
+      
+      // Set headers for download with custom filename
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Cache-Control', 'no-cache');
+      
+      if (response.headers['content-length']) {
+        res.setHeader('Content-Length', response.headers['content-length']);
+      }
+      
+      // Stream the file directly to the response
+      response.data.pipe(res);
+      
+      response.data.on('error', (err) => {
+        console.error('Stream error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Error streaming file' });
+        }
+      });
+      
+      console.log(`Serving renamed download: ${filename} from ${url}`);
+      
+    } catch (fetchError) {
+      console.error('Error fetching file from Catbox:', fetchError);
+      res.status(502).json({ error: 'Failed to fetch file from Catbox', message: fetchError.message });
+    }
+    
+  } catch (error) {
+    console.error('Rename endpoint error:', error);
+    res.status(500).json({ error: 'Failed to process request', message: error.message });
   }
 });
 

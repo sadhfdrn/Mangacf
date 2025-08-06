@@ -85,5 +85,10 @@ Preferred communication style: Simple, everyday language.
   - `/pages/{mangaId}/{chapterId}` now only returns page URLs without CBZ generation
   - New `/cbz/{mangaId}/{chapterId}` endpoint handles CBZ file creation and download links
   - Updated documentation to reflect new endpoint structure and usage examples
+- **Integrated Catbox file hosting (Current Session)**: Automatic upload and custom filename downloads
+  - CBZ files automatically uploaded to Catbox for permanent storage
+  - Added `/rename` endpoint for custom filename downloads from Catbox URLs
+  - Implemented fallback to local storage when Catbox upload fails
+  - Fixed CBZ download extension issue by using proper content headers
 - **Added deployment guides**: Comprehensive instructions for Cloudflare Workers deployment
 - **Implemented native ZIP creation**: Pure JavaScript CBZ generation without Node.js dependencies
