@@ -11,27 +11,21 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### Core Structure
-- **Entry Point**: `index.js` - Express.js server with MangaHere scraper
-- **Runtime Environment**: Node.js 20 with Express.js framework
-- **Architecture Pattern**: REST API server with web scraping capabilities
-- **Port**: Server runs on port 5000 (0.0.0.0 for external access)
+- **Runtime Environment**: Node.js-based application
+- **Entry Point**: Single `index.js` file serving as the main application entry
+- **Execution Model**: Simple console application with synchronous execution
 
-### API Endpoints
-- **GET /** - HTML documentation page with examples
-- **GET /search/{query}** - Search manga by title with pagination support
-- **GET /info/{mangaId}** - Get detailed manga information and chapter list
-- **GET /pages/{mangaId}/{chapterId}** - Generate CBZ file and return download link
-- **GET /download/{fileName}** - Direct download endpoint for CBZ files
-- **GET /health** - Server health check endpoint
+### Design Patterns
+- **Minimal Architecture**: Currently implements a basic script execution pattern
+- **Console Output**: Uses standard console logging for output display
+- **No Framework Dependencies**: Pure JavaScript implementation without external libraries
 
-### Design Decisions
-- **MangaHere Integration**: Uses custom scraper class based on consumet.ts MangaHere provider
-- **CBZ File Generation**: Converts chapter images to downloadable CBZ comic book archives
-- **File Management**: Stores CBZ files locally with 48-hour expiration and automatic cleanup
-- **Download Links**: Returns JSON with download URLs instead of direct file streaming
-- **Error Handling**: Comprehensive error handling with detailed error messages
-- **Web Scraping**: Uses Cheerio for HTML parsing and Axios for HTTP requests
-- **Stream Processing**: Efficient image downloading and archive creation using Node.js streams
+### Scalability Considerations
+The current implementation provides a clean foundation that can be extended with:
+- Web frameworks (Express.js, Fastify, etc.)
+- Database integrations
+- API development capabilities
+- Frontend integration points
 
 ## External Dependencies
 
