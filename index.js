@@ -548,8 +548,10 @@ app.get('/pages/:mangaId/:chapterId', async (req, res) => {
         const imageStream = await mangaHere.downloadImage(page.img, page.headerForImage);
         
         const paddedIndex = String(index + 1).padStart(3, '0');
-        const extension = path.extname(page.img) || '.jpg';
-        const filename = `page_${paddedIndex}${extension}`;
+        // Extract clean extension from URL (remove query parameters)
+        const urlWithoutQuery = page.img.split('?')[0];
+        const extension = path.extname(urlWithoutQuery).toLowerCase() || '.jpg';
+        const filename = `${paddedIndex}${extension}`;
         
         archive.append(imageStream, { name: filename });
         
@@ -624,8 +626,8 @@ app.get('/download/:fileName', (req, res) => {
       return res.status(410).json({ error: 'File has expired and been removed' });
     }
     
-    // Set headers for CBZ download
-    res.setHeader('Content-Type', 'application/zip');
+    // Set headers for CBZ download - CBZ is essentially a ZIP file with comic book content
+    res.setHeader('Content-Type', 'application/zip'); // CBZ files are ZIP archives
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.setHeader('Content-Length', stats.size);
     
