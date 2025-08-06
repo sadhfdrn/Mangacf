@@ -1,0 +1,42 @@
+{
+  "name": "mangahere-api-worker",
+  "version": "2.0.0",
+  "description": "MangaHere manga scraper API for Cloudflare Workers with R2 storage",
+  "main": "worker.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler publish",
+    "tail": "wrangler tail",
+    "kv:create": "wrangler kv:namespace create MANGA_KV",
+    "r2:create": "wrangler r2 bucket create manga-storage",
+    "setup": "npm run kv:create && npm run r2:create"
+  },
+  "keywords": [
+    "manga",
+    "scraper",
+    "api",
+    "cloudflare-workers",
+    "mangahere",
+    "cbz",
+    "comic",
+    "r2-storage"
+  ],
+  "author": "MangaHere API",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/mangahere-api-worker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/mangahere-api-worker/issues"
+  },
+  "homepage": "https://github.com/yourusername/mangahere-api-worker#readme"
+}

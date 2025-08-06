@@ -46,6 +46,25 @@ Preferred communication style: Simple, everyday language.
 - **MangaHere Website**: Primary data source for manga content
 - **consumet.ts Library**: Manga scraping logic and parsing patterns
 
+## Cloudflare Worker Compatibility
+
+### **Worker Architecture**
+- **Main File**: `worker.js` - Cloudflare Worker entry point with ES6 modules
+- **Scraper Module**: `mangahere-scraper.js` - Worker-compatible scraper using native fetch API
+- **CBZ Generator**: `cbz-generator.js` - Pure JavaScript ZIP creation without Node.js dependencies
+- **Storage Strategy**: R2 Object Storage for CBZ files + Workers KV for metadata caching
+
+### **Storage Solutions**
+- **R2 Object Storage**: Stores CBZ files (up to 5TB per file, zero egress fees)
+- **Workers KV**: Caches file metadata globally (sub-100ms read latency)
+- **48-Hour Retention**: Automatic cleanup prevents storage cost accumulation
+- **Global Distribution**: Files served from 275+ edge locations worldwide
+
+### **Deployment Files**
+- `wrangler.toml` - Cloudflare Worker configuration with R2 and KV bindings
+- `worker-package.json` - Package configuration for Worker deployment
+- `CLOUDFLARE_DEPLOYMENT.md` - Complete deployment guide with setup instructions
+
 ## Recent Changes (Latest Session)
 
 - Converted simple "hello world" console app to full-featured manga API server
@@ -59,3 +78,6 @@ Preferred communication style: Simple, everyday language.
 - **Implemented cleanup system**: Automatic deletion of files older than 48 hours
 - **Added download endpoint**: Direct CBZ file download via /download/{fileName}
 - **Enhanced documentation**: Updated HTML documentation to reflect new download link system
+- **Created Cloudflare Worker version**: Complete worker-compatible implementation with R2/KV storage
+- **Added deployment guides**: Comprehensive instructions for Cloudflare Workers deployment
+- **Implemented native ZIP creation**: Pure JavaScript CBZ generation without Node.js dependencies
