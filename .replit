@@ -13,34 +13,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "JavaScript Hello World"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "main"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "MangaHere API Server"
+args = "MangaHere Express API"
 
 [[workflows.workflow]]
-name = "JavaScript Hello World"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "node index.js"
-
-[[workflows.workflow]]
-name = "main"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "node index.js"
-
-[[workflows.workflow]]
-name = "MangaHere API Server"
+name = "MangaHere Express API"
 author = "agent"
 
 [[workflows.workflow.tasks]]
