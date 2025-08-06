@@ -15,6 +15,12 @@ if (!fs.existsSync(DOWNLOADS_DIR)) {
   fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
 }
 
+// Create cache directory for storing Catbox URLs
+const CACHE_DIR = path.join(__dirname, 'cache');
+if (!fs.existsSync(CACHE_DIR)) {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+}
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -259,11 +265,46 @@ class MangaHere {
   }
 }
 
-// Catbox upload service
+// Catbox upload service with local caching
 class CatboxService {
   constructor(userHash) {
     this.userHash = userHash;
     this.uploadUrl = 'https://catbox.moe/user/api.php';
+  }
+
+  getCacheFilePath(chapterId) {
+    return path.join(CACHE_DIR, `${chapterId.replace('/', '_')}.json`);
+  }
+
+  getCachedUrl(chapterId) {
+    try {
+      const cacheFile = this.getCacheFilePath(chapterId);
+      if (fs.existsSync(cacheFile)) {
+        const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+        return cached;
+      }
+    } catch (error) {
+      console.error('Error reading cache:', error);
+    }
+    return null;
+  }
+
+  saveCachedUrl(chapterId, catboxUrl, fileName, fileSize, totalPages) {
+    try {
+      const cacheFile = this.getCacheFilePath(chapterId);
+      const cacheData = {
+        catboxUrl,
+        fileName,
+        fileSize,
+        totalPages,
+        uploadedAt: new Date().toISOString(),
+        chapterId
+      };
+      fs.writeFileSync(cacheFile, JSON.stringify(cacheData, null, 2));
+      console.log(`Cached URL for ${chapterId}: ${catboxUrl}`);
+    } catch (error) {
+      console.error('Error saving cache:', error);
+    }
   }
 
   async uploadFile(filePath, fileName) {
@@ -494,7 +535,8 @@ app.get('/', (req, res) => {
             
             <ul>
                 <li>CBZ files are automatically uploaded to Catbox for permanent storage</li>
-                <li>Download links include custom filenames for better organization</li>
+                <li>Download links are cached locally for instant response on repeat requests</li>
+                <li>First request creates and uploads the file, subsequent requests are instant</li>
                 <li>Files are streamed directly from Catbox with your preferred filename</li>
                 <li>Local storage is used as fallback only when Catbox upload fails</li>
                 <li>Some chapters may be blocked due to copyright restrictions</li>
@@ -592,6 +634,26 @@ app.get('/cbz/:mangaId/:chapterId', async (req, res) => {
     const fileName = `${mangaId}_${chapterId}.cbz`;
     const filePath = path.join(DOWNLOADS_DIR, fileName);
     
+    // Check cache first for instant response
+    const cached = catboxService.getCachedUrl(fullChapterId);
+    if (cached) {
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const downloadUrl = catboxService.generateDownloadLink(cached.catboxUrl, cached.fileName, baseUrl);
+      
+      console.log(`Serving cached CBZ for ${fullChapterId}: ${cached.catboxUrl}`);
+      return res.json({
+        success: true,
+        message: 'CBZ file available from cache (instant)',
+        downloadUrl: downloadUrl,
+        catboxUrl: cached.catboxUrl,
+        fileName: cached.fileName,
+        fileSize: cached.fileSize,
+        totalPages: cached.totalPages,
+        uploadedAt: cached.uploadedAt,
+        cached: true
+      });
+    }
+    
     // Check if file already exists locally
     if (fs.existsSync(filePath)) {
       try {
@@ -601,6 +663,9 @@ app.get('/cbz/:mangaId/:chapterId', async (req, res) => {
         const downloadUrl = catboxService.generateDownloadLink(catboxUrl, fileName, baseUrl);
         
         const stats = fs.statSync(filePath);
+        
+        // Cache the URL for future requests
+        catboxService.saveCachedUrl(fullChapterId, catboxUrl, fileName, `${(stats.size / 1024 / 1024).toFixed(2)} MB`, null);
         
         // Clean up local file after successful upload
         fs.unlinkSync(filePath);
@@ -702,6 +767,9 @@ app.get('/cbz/:mangaId/:chapterId', async (req, res) => {
       const catboxUrl = await catboxService.uploadFile(filePath, fileName);
       const baseUrl = `${req.protocol}://${req.get('host')}`;
       const downloadUrl = catboxService.generateDownloadLink(catboxUrl, fileName, baseUrl);
+      
+      // Cache the URL for future requests
+      catboxService.saveCachedUrl(fullChapterId, catboxUrl, fileName, `${(stats.size / 1024 / 1024).toFixed(2)} MB`, pages.length);
       
       // Clean up local file after successful upload
       fs.unlinkSync(filePath);

@@ -90,5 +90,10 @@ Preferred communication style: Simple, everyday language.
   - Added `/rename` endpoint for custom filename downloads from Catbox URLs
   - Implemented fallback to local storage when Catbox upload fails
   - Fixed CBZ download extension issue by using proper content headers
+  - **Added URL caching system**: Catbox URLs cached locally for instant responses
+    - First request processes and uploads file to Catbox
+    - Subsequent requests for same chapter return instantly from cache
+    - Cache stored in `/cache` directory as JSON files
+    - Eliminates delay on repeat requests
 - **Added deployment guides**: Comprehensive instructions for Cloudflare Workers deployment
 - **Implemented native ZIP creation**: Pure JavaScript CBZ generation without Node.js dependencies
