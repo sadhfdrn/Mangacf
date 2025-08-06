@@ -668,10 +668,14 @@ app.get('/download/:fileName', (req, res) => {
       return res.status(410).json({ error: 'File has expired and been removed' });
     }
     
-    // Set headers for CBZ download - CBZ is essentially a ZIP file with comic book content
-    res.setHeader('Content-Type', 'application/zip'); // CBZ files are ZIP archives
+    // Set headers for CBZ download - use octet-stream to prevent browser from changing extension
+    res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.setHeader('Content-Length', stats.size);
+    res.setHeader('Cache-Control', 'no-cache');
+    
+    // Additional headers to prevent browsers from modifying the filename
+    res.setHeader('X-Suggested-Filename', fileName);
     
     // Stream the file
     const fileStream = fs.createReadStream(filePath);
