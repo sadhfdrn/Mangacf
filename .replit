@@ -19,6 +19,10 @@ args = "JavaScript Hello World"
 task = "workflow.run"
 args = "main"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "MangaHere API Server"
+
 [[workflows.workflow]]
 name = "JavaScript Hello World"
 author = "agent"
@@ -34,3 +38,16 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "node index.js"
+
+[[workflows.workflow]]
+name = "MangaHere API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node index.js"
+waitForPort = 5000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
