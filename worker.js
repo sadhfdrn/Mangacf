@@ -2,17 +2,58 @@
  * Cloudflare Worker version of MangaHere API
  * 
  * Storage Strategy:
- * - Uses R2 Object Storage for CBZ files (zero egress fees, up to 5TB per object)
- * - Uses Workers KV for metadata caching (fast global access)
- * - 48-hour file retention policy
+ * - Uses Catbox.moe for file hosting (permanent storage with user hash)
+ * - No R2 or KV storage required - simplified deployment
+ * - Files uploaded to Catbox with custom download URLs
  * 
- * Required Bindings in wrangler.toml:
- * - R2_BUCKET: R2 bucket for storing CBZ files
- * - MANGA_KV: KV namespace for metadata storage
+ * Required Configuration:
+ * - CATBOX_USER_HASH: Your Catbox user hash for file uploads
  */
 
 import { MANGAHERE_SCRAPER } from './mangahere-scraper.js';
 import { CBZ_GENERATOR } from './cbz-generator.js';
+
+// Your Catbox user hash
+const CATBOX_USER_HASH = '630d80d5715d80cc0cfaa03ec';
+
+// Catbox service for file uploads
+class CatboxService {
+  constructor(userHash) {
+    this.userHash = userHash;
+    this.uploadUrl = 'https://catbox.moe/user/api.php';
+  }
+
+  async uploadFile(fileBuffer, fileName) {
+    try {
+      const formData = new FormData();
+      formData.append('reqtype', 'fileupload');
+      formData.append('userhash', this.userHash);
+      formData.append('fileToUpload', new Blob([fileBuffer]), fileName);
+
+      const response = await fetch(this.uploadUrl, {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.text();
+      if (result && result.startsWith('https://files.catbox.moe/')) {
+        return result.trim();
+      } else {
+        throw new Error(`Upload failed: ${result}`);
+      }
+    } catch (error) {
+      throw new Error(`Catbox upload failed: ${error.message}`);
+    }
+  }
+
+  generateDownloadLink(catboxUrl, fileName, baseUrl) {
+    const encodedUrl = encodeURIComponent(catboxUrl);
+    const encodedFileName = encodeURIComponent(fileName);
+    return `${baseUrl}/rename?url=${encodedUrl}&filename=${encodedFileName}`;
+  }
+}
+
+const catboxService = new CatboxService(CATBOX_USER_HASH);
 
 export default {
   async fetch(request, env, ctx) {
@@ -40,9 +81,11 @@ export default {
       } else if (pathname.startsWith('/info/')) {
         return handleInfo(pathname, corsHeaders);
       } else if (pathname.startsWith('/pages/')) {
-        return handlePages(pathname, env, ctx, corsHeaders, request);
-      } else if (pathname.startsWith('/download/')) {
-        return handleDownload(pathname, env, corsHeaders);
+        return handlePages(pathname, corsHeaders);
+      } else if (pathname.startsWith('/cbz/')) {
+        return handleCBZ(pathname, corsHeaders, request);
+      } else if (pathname.startsWith('/rename')) {
+        return handleRename(url, corsHeaders);
       } else if (pathname === '/health') {
         return handleHealth(corsHeaders);
       } else {
@@ -231,10 +274,26 @@ Response:
             </div>
 
             <div class="endpoint">
-                <h3><span class="method">GET</span><span class="url">/download/{fileName}</span></h3>
-                <p class="description">Direct download CBZ files from R2 storage</p>
+                <h3><span class="method">GET</span><span class="url">/pages/{mangaId}/{chapterId}</span></h3>
+                <p class="description">Get all page URLs for a chapter (without CBZ generation)</p>
                 <div class="example">
-GET /download/jigokuraku_kaku_yuuji_c001.cbz</div>
+GET /pages/jigokuraku_kaku_yuuji/c001</div>
+                <a href="/pages/jigokuraku_kaku_yuuji/c001" class="try-link">Try It</a>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method">GET</span><span class="url">/cbz/{mangaId}/{chapterId}</span></h3>
+                <p class="description">Generate CBZ file and upload to Catbox with download link</p>
+                <div class="example">
+GET /cbz/jigokuraku_kaku_yuuji/c001</div>
+                <a href="/cbz/jigokuraku_kaku_yuuji/c001" class="try-link">Try It</a>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method">GET</span><span class="url">/rename?url={catboxUrl}&filename={name}.cbz</span></h3>
+                <p class="description">Download CBZ with custom filename from Catbox URL</p>
+                <div class="example">
+GET /rename?url=https%3A//files.catbox.moe/abc123.cbz&filename=MyManga_Ch1.cbz</div>
             </div>
 
             <div class="endpoint">
@@ -245,52 +304,42 @@ GET /download/jigokuraku_kaku_yuuji_c001.cbz</div>
         </div>
 
         <div class="card">
-            <h2>🛠️ Deployment Instructions</h2>
+            <h2>🛠️ Simplified Deployment</h2>
             
             <div class="note">
-                <h4>Required Cloudflare Resources:</h4>
+                <h4>Zero Configuration Required:</h4>
                 <ul>
-                    <li><strong>R2 Bucket</strong>: For storing CBZ files</li>
-                    <li><strong>Workers KV Namespace</strong>: For metadata caching</li>
+                    <li><strong>No R2 or KV setup needed</strong> - Uses Catbox for file hosting</li>
+                    <li><strong>No Cloudflare bindings</strong> - Just deploy and it works</li>
+                    <li><strong>Your Catbox hash</strong> is already configured: 630d80d5715d80cc0cfaa03ec</li>
                 </ul>
             </div>
 
             <div class="example">
-# 1. Create R2 bucket
-wrangler r2 bucket create manga-storage
+# Simple deployment (no setup required)
+npx wrangler deploy
 
-# 2. Create KV namespace
-wrangler kv:namespace create "MANGA_KV"
-
-# 3. Update wrangler.toml
-kv_namespaces = [
-  { binding = "MANGA_KV", id = "your-kv-namespace-id" }
-]
-r2_buckets = [
-  { binding = "R2_BUCKET", bucket_name = "manga-storage" }
-]
-
-# 4. Deploy
-wrangler publish</div>
+# That's it! Your worker will be live at:
+# https://mangahere-api.your-subdomain.workers.dev</div>
         </div>
 
         <div class="card">
-            <h2>⚡ Performance Features</h2>
+            <h2>⚡ Catbox Integration Features</h2>
             <div class="feature">
-                <h4>Smart Caching</h4>
-                <p>File metadata cached in Workers KV for instant responses</p>
+                <h4>Permanent Storage</h4>
+                <p>Files hosted permanently on Catbox.moe with your user hash</p>
             </div>
             <div class="feature">
-                <h4>Global CDN</h4>
-                <p>Downloads served from closest Cloudflare edge location</p>
+                <h4>Custom Downloads</h4>
+                <p>Downloads with proper .cbz extension via rename endpoint</p>
             </div>
             <div class="feature">
-                <h4>Zero Egress Fees</h4>
-                <p>No bandwidth costs with R2 object storage</p>
+                <h4>Zero Configuration</h4>
+                <p>No Cloudflare R2 or KV setup required - deploy instantly</p>
             </div>
             <div class="feature">
-                <h4>Auto Cleanup</h4>
-                <p>Files automatically deleted after 48 hours</p>
+                <h4>Separated Endpoints</h4>
+                <p>/pages for viewing URLs, /cbz for file generation</p>
             </div>
         </div>
     </div>
@@ -357,81 +406,24 @@ async function handleInfo(pathname, corsHeaders) {
   }
 }
 
-async function handlePages(pathname, env, ctx, corsHeaders, request) {
+async function handlePages(pathname, corsHeaders) {
   const pathParts = pathname.split('/');
   const mangaId = pathParts[2];
   const chapterId = pathParts[3];
-  const fileName = `${mangaId}_${chapterId}.cbz`;
   
   try {
-    // Check if file already exists in R2
-    const existingFile = await env.R2_BUCKET.head(fileName);
-    if (existingFile) {
-      // Check if file is still valid (within 48 hours)
-      const uploadTime = new Date(existingFile.uploaded);
-      const expiryTime = new Date(uploadTime.getTime() + 48 * 60 * 60 * 1000);
-      
-      if (new Date() < expiryTime) {
-        return new Response(JSON.stringify({
-          success: true,
-          message: "CBZ file already exists",
-          downloadUrl: `${new URL(pathname, request.url).origin}/download/${fileName}`,
-          fileName: fileName,
-          fileSize: formatFileSize(existingFile.size),
-          createdAt: uploadTime.toISOString(),
-          expiresAt: expiryTime.toISOString()
-        }), {
-          headers: {
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          }
-        });
-      } else {
-        // File expired, delete it
-        await env.R2_BUCKET.delete(fileName);
-      }
-    }
-
-    // Generate new CBZ file
     const pages = await MANGAHERE_SCRAPER.fetchChapterPages(`${mangaId}/${chapterId}`);
     if (!pages || pages.length === 0) {
       throw new Error('No pages found for this chapter');
     }
 
-    // Download images and create CBZ
-    const cbzBuffer = await createCBZFromPages(pages);
-    
-    // Upload to R2
-    const uploadTime = new Date();
-    const expiryTime = new Date(uploadTime.getTime() + 48 * 60 * 60 * 1000);
-    
-    await env.R2_BUCKET.put(fileName, cbzBuffer, {
-      customMetadata: {
-        mangaId: mangaId,
-        chapterId: chapterId,
-        createdAt: uploadTime.toISOString(),
-        expiresAt: expiryTime.toISOString()
-      }
-    });
-
-    // Cache metadata in KV
-    await env.MANGA_KV.put(`file:${fileName}`, JSON.stringify({
-      fileName: fileName,
-      fileSize: formatFileSize(cbzBuffer.byteLength),
-      totalPages: pages.length,
-      createdAt: uploadTime.toISOString(),
-      expiresAt: expiryTime.toISOString()
-    }), { expirationTtl: 48 * 60 * 60 }); // 48 hours
-
     return new Response(JSON.stringify({
       success: true,
-      message: "CBZ file created successfully",
-      downloadUrl: `${new URL(pathname, request.url).origin}/download/${fileName}`,
-      fileName: fileName,
-      fileSize: formatFileSize(cbzBuffer.byteLength),
+      message: 'Chapter pages retrieved successfully',
+      mangaId: mangaId,
+      chapterId: chapterId,
       totalPages: pages.length,
-      createdAt: uploadTime.toISOString(),
-      expiresAt: expiryTime.toISOString()
+      pages: pages
     }), {
       headers: {
         'Content-Type': 'application/json',
@@ -440,7 +432,59 @@ async function handlePages(pathname, env, ctx, corsHeaders, request) {
     });
 
   } catch (error) {
-    console.error('Pages generation error:', error);
+    console.error('Pages fetch error:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Failed to fetch chapter pages', 
+      message: error.message 
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        ...corsHeaders
+      }
+    });
+  }
+}
+
+async function handleCBZ(pathname, corsHeaders, request) {
+  const pathParts = pathname.split('/');
+  const mangaId = pathParts[2];
+  const chapterId = pathParts[3];
+  const fileName = `${mangaId}_${chapterId}.cbz`;
+  
+  try {
+    // Get chapter pages
+    const pages = await MANGAHERE_SCRAPER.fetchChapterPages(`${mangaId}/${chapterId}`);
+    if (!pages || pages.length === 0) {
+      throw new Error('No pages found for this chapter');
+    }
+
+    // Download images and create CBZ
+    const cbzBuffer = await createCBZFromPages(pages);
+    
+    // Upload to Catbox
+    const catboxUrl = await catboxService.uploadFile(cbzBuffer, fileName);
+    const baseUrl = new URL(request.url).origin;
+    const downloadUrl = catboxService.generateDownloadLink(catboxUrl, fileName, baseUrl);
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: 'CBZ file created and uploaded to Catbox',
+      downloadUrl: downloadUrl,
+      catboxUrl: catboxUrl,
+      fileName: fileName,
+      fileSize: formatFileSize(cbzBuffer.byteLength),
+      totalPages: pages.length,
+      uploadedAt: new Date().toISOString()
+    }), {
+      headers: {
+        'Content-Type': 'application/json',
+        ...corsHeaders
+      }
+    });
+
+  } catch (error) {
+    console.error('CBZ generation error:', error);
     return new Response(JSON.stringify({ 
       error: 'Failed to generate CBZ file', 
       message: error.message 
@@ -454,42 +498,45 @@ async function handlePages(pathname, env, ctx, corsHeaders, request) {
   }
 }
 
-async function handleDownload(pathname, env, corsHeaders) {
-  const fileName = pathname.split('/download/')[1];
+async function handleRename(url, corsHeaders) {
+  const catboxUrl = url.searchParams.get('url');
+  const filename = url.searchParams.get('filename');
   
-  // Security check: prevent path traversal
-  if (fileName.includes('..') || fileName.includes('/') || !fileName.endsWith('.cbz')) {
-    return new Response('Invalid file name', { 
+  if (!catboxUrl || !filename) {
+    return new Response('Missing url or filename parameter', { 
       status: 400, 
       headers: corsHeaders 
     });
   }
 
   try {
-    const file = await env.R2_BUCKET.get(fileName);
-    
-    if (!file) {
-      return new Response('File not found or expired', { 
-        status: 404, 
-        headers: corsHeaders 
-      });
+    const response = await fetch(catboxUrl);
+    if (!response.ok) {
+      throw new Error('Failed to fetch file from Catbox');
     }
 
-    return new Response(file.body, {
+    return new Response(response.body, {
       headers: {
-        'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="${fileName}"`,
-        'Content-Length': file.size.toString(),
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${filename}"`,
         ...corsHeaders
       }
     });
   } catch (error) {
-    return new Response('Failed to retrieve file', { 
-      status: 500, 
-      headers: corsHeaders 
+    return new Response(JSON.stringify({ 
+      error: 'Failed to download file', 
+      message: error.message 
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        ...corsHeaders
+      }
     });
   }
 }
+
+
 
 async function handleHealth(corsHeaders) {
   return new Response(JSON.stringify({

@@ -2,15 +2,8 @@ name = "mangahere-api"
 main = "worker.js"
 compatibility_date = "2024-08-01"
 
-# R2 bucket binding for storing CBZ files
-[[r2_buckets]]
-binding = "R2_BUCKET"
-bucket_name = "manga-storage"
-
-# KV namespace binding for metadata caching
-[[kv_namespaces]]
-binding = "MANGA_KV"
-id = "REPLACE_WITH_YOUR_KV_ID"
+# Catbox integration - no additional storage needed
+# Just uses Catbox.moe for file hosting with your user hash
 
 # Compatibility flags
 compatibility_flags = ["nodejs_compat"]

@@ -1,41 +1,23 @@
-# Simple Cloudflare Worker Deployment
+# Ultra-Simple Cloudflare Worker Deployment
 
-## Step 1: Create Resources in Cloudflare Dashboard
+## 🚀 Zero Configuration Deployment
 
-### 1.1 Create R2 Bucket
-1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
-2. Click **R2 Object Storage** in the sidebar
-3. Click **Create bucket**
-4. Name it: `manga-storage`
-5. Click **Create bucket**
+This MangaHere API uses **Catbox.moe** for file hosting, so no Cloudflare storage setup is required!
 
-### 1.2 Create KV Namespace
-1. In Cloudflare Dashboard, click **Workers & Pages** in sidebar
-2. Click **KV** tab
-3. Click **Create a namespace**
-4. Name it: `MANGA_KV`
-5. Click **Add**
-6. **Copy the Namespace ID** - you'll need this!
+### Your Catbox Configuration
+- **User Hash**: `630d80d5715d80cc0cfaa03ec` (already configured)
+- **Storage**: Permanent file hosting on Catbox.moe
+- **Downloads**: Custom filename support via `/rename` endpoint
 
-## Step 2: Update Configuration
+## One-Command Deployment
 
-### 2.1 Update wrangler.toml
-Replace `REPLACE_WITH_YOUR_KV_ID` in `wrangler.toml` with your actual KV namespace ID:
-
-```toml
-[[kv_namespaces]]
-binding = "MANGA_KV"
-id = "abc123def456789..."  # Your actual namespace ID
-```
-
-## Step 3: Deploy
-
-### Simple Deploy Command
 ```bash
 npx wrangler deploy
 ```
 
-That's it! Your worker will be deployed to a URL like:
+That's literally it! 🎉
+
+Your worker will be deployed to a URL like:
 `https://mangahere-api.your-subdomain.workers.dev`
 
 ## Test Your Deployment
@@ -46,44 +28,67 @@ curl https://mangahere-api.your-subdomain.workers.dev/health
 
 # Test search
 curl https://mangahere-api.your-subdomain.workers.dev/search/jigokuraku
+
+# Test pages (view only)
+curl https://mangahere-api.your-subdomain.workers.dev/pages/jigokuraku_kaku_yuuji/c001
+
+# Test CBZ generation (uploads to Catbox)
+curl https://mangahere-api.your-subdomain.workers.dev/cbz/jigokuraku_kaku_yuuji/c001
 ```
 
-## Getting Your KV Namespace ID
+## API Endpoints
 
-### Method 1: Dashboard (Easiest)
-1. Go to Cloudflare Dashboard → **Workers & Pages** → **KV**
-2. Find your `MANGA_KV` namespace
-3. The **Namespace ID** is shown in the list
-
-### Method 2: Command Line
-```bash
-npx wrangler kv:namespace list
+### 🔍 Search Manga
+```
+GET /search/{query}?page=1
 ```
 
-### Method 3: Create via Command (if needed)
-```bash
-npx wrangler kv:namespace create "MANGA_KV"
+### 📖 Get Manga Info
 ```
-This will output the namespace ID.
+GET /info/{mangaId}
+```
+
+### 📄 View Chapter Pages
+```
+GET /pages/{mangaId}/{chapterId}
+```
+
+### 📦 Generate CBZ File
+```
+GET /cbz/{mangaId}/{chapterId}
+```
+
+### 📥 Download with Custom Name
+```
+GET /rename?url={catboxUrl}&filename={customName}.cbz
+```
+
+## How It Works
+
+1. **Search & Info**: Scrapes MangaHere for manga data
+2. **Pages**: Returns list of page URLs for viewing
+3. **CBZ**: Creates comic book archive and uploads to Catbox
+4. **Download**: Streams file from Catbox with custom filename
 
 ## Troubleshooting
 
-### Common Issues
-1. **KV namespace not found**: Make sure you updated the ID in `wrangler.toml`
-2. **R2 bucket not found**: Check the bucket name is exactly `manga-storage`
-3. **Deploy fails**: Run `npx wrangler login` first
-
-### Quick Commands
+### Login Issues
 ```bash
-# Login to Cloudflare
 npx wrangler login
-
-# List your KV namespaces
-npx wrangler kv:namespace list
-
-# List your R2 buckets
-npx wrangler r2 bucket list
-
-# Deploy
-npx wrangler deploy
 ```
+
+### Check Deployment Status
+```bash
+npx wrangler deployments list
+```
+
+### View Logs
+```bash
+npx wrangler tail
+```
+
+## No Setup Required! 
+- ✅ No R2 buckets to create
+- ✅ No KV namespaces to configure
+- ✅ No wrangler.toml editing needed
+- ✅ Your Catbox hash is pre-configured

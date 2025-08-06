@@ -54,18 +54,20 @@ Preferred communication style: Simple, everyday language.
 - **Main File**: `worker.js` - Cloudflare Worker entry point with ES6 modules
 - **Scraper Module**: `mangahere-scraper.js` - Worker-compatible scraper using native fetch API
 - **CBZ Generator**: `cbz-generator.js` - Pure JavaScript ZIP creation without Node.js dependencies
-- **Storage Strategy**: R2 Object Storage for CBZ files + Workers KV for metadata caching
+- **Storage Strategy**: Catbox.moe integration for permanent file hosting (simplified deployment)
 
-### **Storage Solutions**
-- **R2 Object Storage**: Stores CBZ files (up to 5TB per file, zero egress fees)
-- **Workers KV**: Caches file metadata globally (sub-100ms read latency)
-- **48-Hour Retention**: Automatic cleanup prevents storage cost accumulation
-- **Global Distribution**: Files served from 275+ edge locations worldwide
+### **Catbox Integration (Current)**
+- **File Hosting**: Direct upload to Catbox.moe with user hash `630d80d5715d80cc0cfaa03ec`
+- **Custom Downloads**: `/rename` endpoint for proper .cbz filename downloads
+- **Zero Configuration**: No R2 buckets or KV namespaces required
+- **Separated Endpoints**: `/pages` for viewing, `/cbz` for file generation
+- **One-Command Deploy**: Simply `npx wrangler deploy` with no setup
 
 ### **Deployment Files**
-- `wrangler.toml` - Cloudflare Worker configuration with R2 and KV bindings
+- `wrangler.toml` - Simplified configuration (no R2/KV bindings needed)
 - `worker-package.json` - Package configuration for Worker deployment
-- `CLOUDFLARE_DEPLOYMENT.md` - Complete deployment guide with setup instructions
+- `SIMPLE_DEPLOY.md` - Ultra-simple deployment guide (one command)
+- `CLOUDFLARE_DEPLOYMENT.md` - Legacy R2/KV deployment guide (for reference)
 
 ## Recent Changes (Latest Session)
 
