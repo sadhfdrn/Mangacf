@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a MangaHere API server built with Express.js that provides endpoints for searching manga, getting detailed information, and downloading chapters as CBZ files. The server integrates with the consumet.ts library to scrape manga data from MangaHere website.
+This is a MangaHere API server built with Express.js that provides endpoints for searching manga, getting detailed information, viewing page URLs, and downloading chapters as CBZ files. The API has been restructured to separate page viewing from CBZ generation functionality for better modularity.
 
 ## User Preferences
 
@@ -11,21 +11,29 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### Core Structure
-- **Runtime Environment**: Node.js-based application
-- **Entry Point**: Single `index.js` file serving as the main application entry
-- **Execution Model**: Simple console application with synchronous execution
+- **Entry Point**: `index.js` - Express.js server with MangaHere scraper
+- **Runtime Environment**: Node.js 20 with Express.js framework
+- **Architecture Pattern**: REST API server with web scraping capabilities
+- **Port**: Server runs on port 5000 (0.0.0.0 for external access)
 
-### Design Patterns
-- **Minimal Architecture**: Currently implements a basic script execution pattern
-- **Console Output**: Uses standard console logging for output display
-- **No Framework Dependencies**: Pure JavaScript implementation without external libraries
+### API Endpoints
+- **GET /** - HTML documentation page with examples
+- **GET /search/{query}** - Search manga by title with pagination support
+- **GET /info/{mangaId}** - Get detailed manga information and chapter list
+- **GET /pages/{mangaId}/{chapterId}** - Get all page URLs for a chapter (NEW: separated from CBZ generation)
+- **GET /cbz/{mangaId}/{chapterId}** - Generate CBZ file and return download link (NEW: dedicated CBZ endpoint)
+- **GET /download/{fileName}** - Direct download endpoint for CBZ files
+- **GET /health** - Server health check endpoint
 
-### Scalability Considerations
-The current implementation provides a clean foundation that can be extended with:
-- Web frameworks (Express.js, Fastify, etc.)
-- Database integrations
-- API development capabilities
-- Frontend integration points
+### Design Decisions
+- **Separated Concerns**: Pages endpoint now only returns URLs, CBZ generation moved to dedicated endpoint
+- **MangaHere Integration**: Uses custom scraper class based on consumet.ts MangaHere provider
+- **CBZ File Generation**: Converts chapter images to downloadable CBZ comic book archives
+- **File Management**: Stores CBZ files locally with 48-hour expiration and automatic cleanup
+- **Download Links**: Returns JSON with download URLs instead of direct file streaming
+- **Error Handling**: Comprehensive error handling with detailed error messages
+- **Web Scraping**: Uses Cheerio for HTML parsing and Axios for HTTP requests
+- **Stream Processing**: Efficient image downloading and archive creation using Node.js streams
 
 ## External Dependencies
 
@@ -73,5 +81,9 @@ The current implementation provides a clean foundation that can be extended with
 - **Added download endpoint**: Direct CBZ file download via /download/{fileName}
 - **Enhanced documentation**: Updated HTML documentation to reflect new download link system
 - **Created Cloudflare Worker version**: Complete worker-compatible implementation with R2/KV storage
+- **Restructured API endpoints (Current Session)**: Separated pages viewing from CBZ generation
+  - `/pages/{mangaId}/{chapterId}` now only returns page URLs without CBZ generation
+  - New `/cbz/{mangaId}/{chapterId}` endpoint handles CBZ file creation and download links
+  - Updated documentation to reflect new endpoint structure and usage examples
 - **Added deployment guides**: Comprehensive instructions for Cloudflare Workers deployment
 - **Implemented native ZIP creation**: Pure JavaScript CBZ generation without Node.js dependencies

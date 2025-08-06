@@ -389,6 +389,13 @@ app.get('/', (req, res) => {
             <div class="endpoint">
                 <span class="method">GET</span>
                 <div class="url">/pages/{mangaId}/{chapterId}</div>
+                <p><strong>Description:</strong> Get all page URLs for a chapter</p>
+                <p class="description">Returns a JSON response with all page image URLs for the chapter</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method">GET</span>
+                <div class="url">/cbz/{mangaId}/{chapterId}</div>
                 <p><strong>Description:</strong> Generate and get download link for chapter CBZ file</p>
                 <p class="description">Returns a JSON response with download link for CBZ file containing all chapter pages</p>
             </div>
@@ -411,8 +418,11 @@ app.get('/', (req, res) => {
                 <p><strong>Get info for "jigokuraku_kaku_yuuji":</strong><br>
                 <a href="/info/jigokuraku_kaku_yuuji" target="_blank">/info/jigokuraku_kaku_yuuji</a></p>
                 
-                <p><strong>Generate download link for "jigokuraku_kaku_yuuji/c001":</strong><br>
+                <p><strong>Get page URLs for "jigokuraku_kaku_yuuji/c001":</strong><br>
                 <a href="/pages/jigokuraku_kaku_yuuji/c001" target="_blank">/pages/jigokuraku_kaku_yuuji/c001</a></p>
+                
+                <p><strong>Generate CBZ download for "jigokuraku_kaku_yuuji/c001":</strong><br>
+                <a href="/cbz/jigokuraku_kaku_yuuji/c001" target="_blank">/cbz/jigokuraku_kaku_yuuji/c001</a></p>
                 
                 <p><strong>Search for "one piece":</strong><br>
                 <a href="/search/one%20piece" target="_blank">/search/one%20piece</a></p>
@@ -425,7 +435,8 @@ app.get('/', (req, res) => {
             
             <p><strong>Search Response:</strong> JSON with results array containing manga information</p>
             <p><strong>Info Response:</strong> JSON with detailed manga information and chapters list</p>
-            <p><strong>Pages Response:</strong> JSON with download link and file information</p>
+            <p><strong>Pages Response:</strong> JSON with all page URLs and headers for the chapter</p>
+            <p><strong>CBZ Response:</strong> JSON with download link and file information</p>
             <p><strong>Download Response:</strong> Direct CBZ file download</p>
             
             <h2>⚠️ Important Notes</h2>
@@ -436,7 +447,8 @@ app.get('/', (req, res) => {
                 <li>If a file already exists, you'll get the existing download link immediately</li>
                 <li>Some chapters may be blocked due to copyright restrictions</li>
                 <li>Chapter IDs follow the format: {mangaId}/c{chapterNumber}</li>
-                <li>The /pages endpoint returns JSON with download link information</li>
+                <li>The /pages endpoint returns JSON with all page URLs for direct access</li>
+                <li>The /cbz endpoint generates CBZ files and returns download links</li>
                 <li>Use the /download endpoint to actually download the CBZ files</li>
             </ul>
             
@@ -485,8 +497,38 @@ app.get('/info/:mangaId', async (req, res) => {
   }
 });
 
-// Pages endpoint with CBZ file generation and download link
+// Pages endpoint - returns all page URLs
 app.get('/pages/:mangaId/:chapterId', async (req, res) => {
+  try {
+    const { mangaId, chapterId } = req.params;
+    const fullChapterId = `${mangaId}/${chapterId}`;
+    
+    if (!mangaId || !chapterId) {
+      return res.status(400).json({ error: 'Manga ID and Chapter ID are required' });
+    }
+    
+    console.log(`Fetching pages for chapter: ${fullChapterId}`);
+    const pages = await mangaHere.fetchChapterPages(fullChapterId);
+    
+    if (!pages || pages.length === 0) {
+      return res.status(404).json({ error: 'No pages found for this chapter' });
+    }
+    
+    res.json({
+      success: true,
+      chapterId: fullChapterId,
+      totalPages: pages.length,
+      pages: pages
+    });
+    
+  } catch (error) {
+    console.error('Pages error:', error);
+    res.status(500).json({ error: 'Failed to fetch chapter pages', message: error.message });
+  }
+});
+
+// CBZ endpoint - generates CBZ file and returns download link
+app.get('/cbz/:mangaId/:chapterId', async (req, res) => {
   try {
     const { mangaId, chapterId } = req.params;
     const fullChapterId = `${mangaId}/${chapterId}`;
@@ -592,9 +634,9 @@ app.get('/pages/:mangaId/:chapterId', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Pages error:', error);
+    console.error('CBZ error:', error);
     if (!res.headersSent) {
-      res.status(500).json({ error: 'Failed to fetch chapter pages', message: error.message });
+      res.status(500).json({ error: 'Failed to create CBZ file', message: error.message });
     }
   }
 });
