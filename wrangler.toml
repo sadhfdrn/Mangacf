@@ -2,10 +2,6 @@ name = "mangahere-api"
 main = "worker.js"
 compatibility_date = "2024-08-01"
 
-# Worker settings
-[env.production]
-name = "mangahere-api"
-
 # R2 bucket binding for storing CBZ files
 [[r2_buckets]]
 binding = "R2_BUCKET"
@@ -14,19 +10,7 @@ bucket_name = "manga-storage"
 # KV namespace binding for metadata caching
 [[kv_namespaces]]
 binding = "MANGA_KV"
-id = "your-kv-namespace-id"  # Replace with actual namespace ID
-
-# Worker limits and settings
-[limits]
-cpu_ms = 30000  # 30 seconds CPU time (paid plan)
-
-# Build configuration
-[build]
-command = ""
+id = "REPLACE_WITH_YOUR_KV_ID"
 
 # Compatibility flags
 compatibility_flags = ["nodejs_compat"]
-
-# Environment variables (add if needed)
-[vars]
-ENVIRONMENT = "production"
