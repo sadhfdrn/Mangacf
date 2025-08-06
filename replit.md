@@ -20,12 +20,15 @@ Preferred communication style: Simple, everyday language.
 - **GET /** - HTML documentation page with examples
 - **GET /search/{query}** - Search manga by title with pagination support
 - **GET /info/{mangaId}** - Get detailed manga information and chapter list
-- **GET /pages/{mangaId}/{chapterId}** - Download chapter pages as CBZ file
+- **GET /pages/{mangaId}/{chapterId}** - Generate CBZ file and return download link
+- **GET /download/{fileName}** - Direct download endpoint for CBZ files
 - **GET /health** - Server health check endpoint
 
 ### Design Decisions
 - **MangaHere Integration**: Uses custom scraper class based on consumet.ts MangaHere provider
 - **CBZ File Generation**: Converts chapter images to downloadable CBZ comic book archives
+- **File Management**: Stores CBZ files locally with 48-hour expiration and automatic cleanup
+- **Download Links**: Returns JSON with download URLs instead of direct file streaming
 - **Error Handling**: Comprehensive error handling with detailed error messages
 - **Web Scraping**: Uses Cheerio for HTML parsing and Axios for HTTP requests
 - **Stream Processing**: Efficient image downloading and archive creation using Node.js streams
@@ -51,3 +54,8 @@ Preferred communication style: Simple, everyday language.
 - Created comprehensive HTML documentation page with example links
 - Set up Express.js server with proper error handling and middleware
 - Configured server to run on port 5000 with external access
+- **Updated pages endpoint**: Now returns download links instead of direct file streaming
+- **Added file management**: CBZ files stored locally with 48-hour expiration
+- **Implemented cleanup system**: Automatic deletion of files older than 48 hours
+- **Added download endpoint**: Direct CBZ file download via /download/{fileName}
+- **Enhanced documentation**: Updated HTML documentation to reflect new download link system

@@ -8,6 +8,12 @@ const { promisify } = require('util');
 const { pipeline } = require('stream');
 const streamPipeline = promisify(pipeline);
 
+// Create downloads directory if it doesn't exist
+const DOWNLOADS_DIR = path.join(__dirname, 'downloads');
+if (!fs.existsSync(DOWNLOADS_DIR)) {
+  fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+}
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -251,6 +257,35 @@ class MangaHere {
 
 const mangaHere = new MangaHere();
 
+// File cleanup system - delete files older than 48 hours
+const cleanupOldFiles = () => {
+  try {
+    const now = Date.now();
+    const fortyEightHours = 48 * 60 * 60 * 1000; // 48 hours in milliseconds
+    
+    if (fs.existsSync(DOWNLOADS_DIR)) {
+      const files = fs.readdirSync(DOWNLOADS_DIR);
+      
+      files.forEach(file => {
+        const filePath = path.join(DOWNLOADS_DIR, file);
+        const stats = fs.statSync(filePath);
+        
+        if (now - stats.mtime.getTime() > fortyEightHours) {
+          fs.unlinkSync(filePath);
+          console.log(`Deleted old file: ${file}`);
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Error during cleanup:', error);
+  }
+};
+
+// Run cleanup every hour
+setInterval(cleanupOldFiles, 60 * 60 * 1000);
+// Run cleanup on startup
+setTimeout(cleanupOldFiles, 5000);
+
 // Routes
 app.get('/', (req, res) => {
   res.send(`
@@ -353,9 +388,16 @@ app.get('/', (req, res) => {
             
             <div class="endpoint">
                 <span class="method">GET</span>
-                <div class="url">/pages/{chapterId}</div>
-                <p><strong>Description:</strong> Get all page images from a chapter as a CBZ download</p>
-                <p class="description">Downloads a CBZ file containing all pages of the chapter</p>
+                <div class="url">/pages/{mangaId}/{chapterId}</div>
+                <p><strong>Description:</strong> Generate and get download link for chapter CBZ file</p>
+                <p class="description">Returns a JSON response with download link for CBZ file containing all chapter pages</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method">GET</span>
+                <div class="url">/download/{fileName}</div>
+                <p><strong>Description:</strong> Download CBZ file directly</p>
+                <p class="description">Direct download endpoint for CBZ files (files expire after 48 hours)</p>
             </div>
             
             <h2>🚀 Example Usage</h2>
@@ -369,7 +411,7 @@ app.get('/', (req, res) => {
                 <p><strong>Get info for "jigokuraku_kaku_yuuji":</strong><br>
                 <a href="/info/jigokuraku_kaku_yuuji" target="_blank">/info/jigokuraku_kaku_yuuji</a></p>
                 
-                <p><strong>Download chapter "jigokuraku_kaku_yuuji/c001" as CBZ:</strong><br>
+                <p><strong>Generate download link for "jigokuraku_kaku_yuuji/c001":</strong><br>
                 <a href="/pages/jigokuraku_kaku_yuuji/c001" target="_blank">/pages/jigokuraku_kaku_yuuji/c001</a></p>
                 
                 <p><strong>Search for "one piece":</strong><br>
@@ -383,15 +425,19 @@ app.get('/', (req, res) => {
             
             <p><strong>Search Response:</strong> JSON with results array containing manga information</p>
             <p><strong>Info Response:</strong> JSON with detailed manga information and chapters list</p>
-            <p><strong>Pages Response:</strong> Direct CBZ file download</p>
+            <p><strong>Pages Response:</strong> JSON with download link and file information</p>
+            <p><strong>Download Response:</strong> Direct CBZ file download</p>
             
             <h2>⚠️ Important Notes</h2>
             
             <ul>
                 <li>CBZ files may take a few moments to generate depending on chapter length</li>
+                <li>Generated files are stored on server and expire after 48 hours</li>
+                <li>If a file already exists, you'll get the existing download link immediately</li>
                 <li>Some chapters may be blocked due to copyright restrictions</li>
                 <li>Chapter IDs follow the format: {mangaId}/c{chapterNumber}</li>
-                <li>All responses are in JSON format except for the /pages endpoint which returns a file</li>
+                <li>The /pages endpoint returns JSON with download link information</li>
+                <li>Use the /download endpoint to actually download the CBZ files</li>
             </ul>
             
             <div style="text-align: center; margin-top: 30px; padding: 20px; background: #2c3e50; color: white; border-radius: 5px;">
@@ -439,7 +485,7 @@ app.get('/info/:mangaId', async (req, res) => {
   }
 });
 
-// Pages endpoint with CBZ download
+// Pages endpoint with CBZ file generation and download link
 app.get('/pages/:mangaId/:chapterId', async (req, res) => {
   try {
     const { mangaId, chapterId } = req.params;
@@ -449,6 +495,25 @@ app.get('/pages/:mangaId/:chapterId', async (req, res) => {
       return res.status(400).json({ error: 'Manga ID and Chapter ID are required' });
     }
     
+    const fileName = `${mangaId}_${chapterId}.cbz`;
+    const filePath = path.join(DOWNLOADS_DIR, fileName);
+    
+    // Check if file already exists
+    if (fs.existsSync(filePath)) {
+      const stats = fs.statSync(filePath);
+      const downloadUrl = `${req.protocol}://${req.get('host')}/download/${fileName}`;
+      
+      return res.json({
+        success: true,
+        message: 'CBZ file already exists',
+        downloadUrl: downloadUrl,
+        fileName: fileName,
+        fileSize: `${(stats.size / 1024 / 1024).toFixed(2)} MB`,
+        createdAt: stats.mtime.toISOString(),
+        expiresAt: new Date(stats.mtime.getTime() + (48 * 60 * 60 * 1000)).toISOString()
+      });
+    }
+    
     console.log(`Fetching pages for chapter: ${fullChapterId}`);
     const pages = await mangaHere.fetchChapterPages(fullChapterId);
     
@@ -456,57 +521,130 @@ app.get('/pages/:mangaId/:chapterId', async (req, res) => {
       return res.status(404).json({ error: 'No pages found for this chapter' });
     }
     
-    // Set response headers for CBZ download
-    const fileName = `${mangaId}_${chapterId}.cbz`;
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-    
-    // Create zip archive
+    // Create zip archive and save to file
+    const output = fs.createWriteStream(filePath);
     const archive = archiver('zip', { zlib: { level: 9 } });
     
     archive.on('error', (err) => {
       console.error('Archive error:', err);
+      // Clean up partial file
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
       if (!res.headersSent) {
         res.status(500).json({ error: 'Failed to create CBZ file', message: err.message });
       }
     });
     
-    archive.pipe(res);
+    archive.pipe(output);
     
     // Download and add each page to the archive
-    let downloadPromises = pages.map(async (page, index) => {
+    console.log(`Creating CBZ with ${pages.length} pages...`);
+    
+    for (let index = 0; index < pages.length; index++) {
+      const page = pages[index];
       try {
-        console.log(`Downloading page ${page.page + 1}/${pages.length}: ${page.img}`);
+        console.log(`Downloading page ${index + 1}/${pages.length}: ${page.img}`);
         const imageStream = await mangaHere.downloadImage(page.img, page.headerForImage);
         
         const paddedIndex = String(index + 1).padStart(3, '0');
         const extension = path.extname(page.img) || '.jpg';
         const filename = `page_${paddedIndex}${extension}`;
         
-        return new Promise((resolve, reject) => {
-          archive.append(imageStream, { name: filename });
-          imageStream.on('end', resolve);
-          imageStream.on('error', reject);
-        });
+        archive.append(imageStream, { name: filename });
+        
+        // Wait a bit between downloads to avoid overwhelming the server
+        if (index < pages.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
       } catch (error) {
-        console.error(`Failed to download page ${page.page + 1}:`, error);
-        throw error;
+        console.error(`Failed to download page ${index + 1}:`, error);
+        // Continue with other pages instead of failing completely
       }
-    });
-    
-    // Wait for all downloads to complete
-    await Promise.all(downloadPromises);
+    }
     
     // Finalize the archive
     await archive.finalize();
     
+    // Wait for the file to be written
+    await new Promise((resolve, reject) => {
+      output.on('close', resolve);
+      output.on('error', reject);
+    });
+    
     console.log(`CBZ file created successfully for ${fullChapterId}`);
+    
+    // Get file stats
+    const stats = fs.statSync(filePath);
+    const downloadUrl = `${req.protocol}://${req.get('host')}/download/${fileName}`;
+    
+    res.json({
+      success: true,
+      message: 'CBZ file created successfully',
+      downloadUrl: downloadUrl,
+      fileName: fileName,
+      fileSize: `${(stats.size / 1024 / 1024).toFixed(2)} MB`,
+      totalPages: pages.length,
+      createdAt: stats.mtime.toISOString(),
+      expiresAt: new Date(stats.mtime.getTime() + (48 * 60 * 60 * 1000)).toISOString()
+    });
     
   } catch (error) {
     console.error('Pages error:', error);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Failed to fetch chapter pages', message: error.message });
     }
+  }
+});
+
+// Download endpoint to serve CBZ files
+app.get('/download/:fileName', (req, res) => {
+  try {
+    const { fileName } = req.params;
+    
+    // Validate filename to prevent path traversal
+    if (!fileName || fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+    
+    const filePath = path.join(DOWNLOADS_DIR, fileName);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'File not found or has expired' });
+    }
+    
+    // Check if file is expired (older than 48 hours)
+    const stats = fs.statSync(filePath);
+    const now = Date.now();
+    const fortyEightHours = 48 * 60 * 60 * 1000;
+    
+    if (now - stats.mtime.getTime() > fortyEightHours) {
+      // Delete expired file
+      fs.unlinkSync(filePath);
+      return res.status(410).json({ error: 'File has expired and been removed' });
+    }
+    
+    // Set headers for CBZ download
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', stats.size);
+    
+    // Stream the file
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+    
+    fileStream.on('error', (err) => {
+      console.error('File stream error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Error reading file' });
+      }
+    });
+    
+    console.log(`Serving download: ${fileName}`);
+    
+  } catch (error) {
+    console.error('Download error:', error);
+    res.status(500).json({ error: 'Failed to serve file', message: error.message });
   }
 });
 
