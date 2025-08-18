@@ -134,9 +134,11 @@ class MangaHere {
     const url = `${this.baseUrl}/manga/${chapterId}/1.html`;
 
     try {
+      console.log(`Fetching chapter pages from: ${url}`);
       const { data } = await this.client.get(url, {
         headers: {
           cookie: 'isAdult=1',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         },
       });
 
@@ -149,85 +151,169 @@ class MangaHere {
         throw new Error('Chapter blocked due to copyright');
       }
 
-      const bar = $('script[src*=chapter_bar]').data();
-      const html = $.html();
-      
-      if (typeof bar !== 'undefined') {
-        // Method 1: Direct evaluation
-        const ss = html.indexOf('eval(function(p,a,c,k,e,d)');
-        const se = html.indexOf('</script>', ss);
-        const s = html.substring(ss, se).replace('eval', '');
-        
-        try {
-          const ds = eval(s);
-          const urls = ds.split("['")[1].split("']")[0].split("','");
+      const html = data;
+      let pagesFound = false;
 
-          urls.forEach((url, i) => {
-            chapterPages.push({
-              page: i,
-              img: `https:${url}`,
-              headerForImage: { Referer: url }
-            });
-          });
-        } catch (evalErr) {
-          console.error('Eval method failed:', evalErr);
-        }
-      } else {
-        // Method 2: Extract key and use API
-        try {
-          let sKey = this.extractKey(html);
-          const chapterIdsl = html.indexOf('chapterid');
-          const chapterId = html.substring(chapterIdsl + 11, html.indexOf(';', chapterIdsl)).trim();
+      // Method 1: Look for direct image URLs in scripts
+      try {
+        const scriptTags = $('script').toArray();
+        for (const scriptTag of scriptTags) {
+          const scriptContent = $(scriptTag).html() || '';
+          
+          // Look for image arrays in various formats
+          if (scriptContent.includes('newImgs') || scriptContent.includes('pageArray') || scriptContent.includes('images')) {
+            console.log('Found potential image data in script');
+            
+            // Try to extract image URLs using regex patterns
+            const imagePatterns = [
+              /"(https:\/\/[^"]*\.(?:jpg|jpeg|png|gif|webp)[^"]*)"/gi,
+              /'(https:\/\/[^']*\.(?:jpg|jpeg|png|gif|webp)[^']*)'/gi,
+              /src\s*=\s*["'](https:\/\/[^"']*\.(?:jpg|jpeg|png|gif|webp)[^"']*)["']/gi
+            ];
 
-          const chapterPagesElmnt = $('body > div:nth-child(6) > div > span').children('a');
-          const pages = parseInt(chapterPagesElmnt.last().prev().attr('data-page') || '0');
-          const pageBase = url.substring(0, url.lastIndexOf('/'));
-
-          for (let i = 1; i <= pages; i++) {
-            const pageLink = `${pageBase}/chapterfun.ashx?cid=${chapterId}&page=${i}&key=${sKey}`;
-
-            for (let j = 1; j <= 3; j++) {
-              try {
-                const { data } = await this.client.get(pageLink, {
-                  headers: {
-                    Referer: url,
-                    'X-Requested-With': 'XMLHttpRequest',
-                    cookie: 'isAdult=1',
-                  },
-                });
-
-                if (data) {
-                  const ds = eval(data.replace('eval', ''));
-                  const baseLinksp = ds.indexOf('pix=') + 5;
-                  const baseLinkes = ds.indexOf(';', baseLinksp) - 1;
-                  const baseLink = ds.substring(baseLinksp, baseLinkes);
-
-                  const imageLinksp = ds.indexOf('pvalue=') + 9;
-                  const imageLinkes = ds.indexOf('"', imageLinksp);
-                  const imageLink = ds.substring(imageLinksp, imageLinkes);
-
+            for (const pattern of imagePatterns) {
+              const matches = scriptContent.match(pattern);
+              if (matches && matches.length > 0) {
+                matches.forEach((match, i) => {
+                  const cleanUrl = match.replace(/['"]/g, '').replace('src=', '');
+                  if (cleanUrl.includes('loading.gif') || cleanUrl.includes('placeholder')) {
+                    return; // Skip loading/placeholder images
+                  }
                   chapterPages.push({
-                    page: i - 1,
-                    img: `https:${baseLink}${imageLink}`,
+                    page: i + 1,
+                    img: cleanUrl,
                     headerForImage: { Referer: url }
                   });
-                  break;
-                }
-              } catch (pageErr) {
-                console.error(`Error fetching page ${i}:`, pageErr);
-                if (j === 3) {
-                  throw pageErr;
-                }
+                });
+                pagesFound = true;
+                break;
               }
             }
           }
-        } catch (keyErr) {
-          console.error('Key extraction method failed:', keyErr);
+        }
+      } catch (scriptErr) {
+        console.error('Script parsing method failed:', scriptErr);
+      }
+
+      // Method 2: Look for chapter data in various script formats
+      if (!pagesFound) {
+        try {
+          // Look for eval functions with image data
+          const evalMatch = html.match(/eval\(function\(p,a,c,k,e,d\)[^}]+\}/);
+          if (evalMatch) {
+            console.log('Found eval function, attempting to decode');
+            try {
+              const evalCode = evalMatch[0].replace('eval', '');
+              const decoded = eval(evalCode);
+              
+              // Look for image URLs in decoded content
+              const imageUrls = decoded.match(/https:\/\/[^'",\s]+\.(?:jpg|jpeg|png|gif|webp)/gi);
+              if (imageUrls && imageUrls.length > 0) {
+                imageUrls.forEach((imgUrl, i) => {
+                  if (!imgUrl.includes('loading.gif')) {
+                    chapterPages.push({
+                      page: i + 1,
+                      img: imgUrl,
+                      headerForImage: { Referer: url }
+                    });
+                  }
+                });
+                pagesFound = true;
+              }
+            } catch (evalErr) {
+              console.error('Eval decoding failed:', evalErr);
+            }
+          }
+        } catch (err) {
+          console.error('Eval method failed:', err);
         }
       }
 
+      // Method 3: Try pagination approach by fetching multiple pages
+      if (!pagesFound) {
+        try {
+          console.log('Trying pagination method');
+          const pageLinks = $('a[href*="/manga/"]').toArray();
+          const totalPages = Math.min(50, pageLinks.length); // Limit to 50 pages max
+
+          for (let pageNum = 1; pageNum <= Math.max(1, totalPages); pageNum++) {
+            const pageUrl = `${this.baseUrl}/manga/${chapterId}/${pageNum}.html`;
+            
+            try {
+              const { data: pageData } = await this.client.get(pageUrl, {
+                headers: {
+                  cookie: 'isAdult=1',
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                },
+                timeout: 10000
+              });
+
+              const page$ = cheerio.load(pageData);
+              
+              // Look for the main manga image on this page
+              const imgSelectors = [
+                'img#viewer',
+                'img.manga-page',
+                'img[src*=".jpg"]',
+                'img[src*=".png"]',
+                'img[src*=".gif"]',
+                'img[src*=".webp"]'
+              ];
+
+              let imageFound = false;
+              for (const selector of imgSelectors) {
+                const img = page$(selector).first();
+                const imgSrc = img.attr('src');
+                
+                if (imgSrc && !imgSrc.includes('loading.gif') && !imgSrc.includes('placeholder')) {
+                  const fullUrl = imgSrc.startsWith('http') ? imgSrc : `https:${imgSrc}`;
+                  chapterPages.push({
+                    page: pageNum,
+                    img: fullUrl,
+                    headerForImage: { Referer: pageUrl }
+                  });
+                  imageFound = true;
+                  pagesFound = true;
+                  break;
+                }
+              }
+
+              if (!imageFound && pageNum === 1) {
+                // If no image found on first page, probably no more pages
+                break;
+              }
+
+              // Small delay to avoid overwhelming the server
+              await new Promise(resolve => setTimeout(resolve, 200));
+              
+            } catch (pageErr) {
+              console.error(`Error fetching page ${pageNum}:`, pageErr);
+              if (pageNum === 1) {
+                // If first page fails, break
+                break;
+              }
+            }
+          }
+        } catch (paginationErr) {
+          console.error('Pagination method failed:', paginationErr);
+        }
+      }
+
+      // If still no pages found, add a single loading placeholder
+      if (chapterPages.length === 0) {
+        console.log('No pages found, adding fallback');
+        chapterPages.push({
+          page: 1,
+          img: "https://static.mangahere.cc/v20240816/mangahere/images/loading.gif",
+          headerForImage: null
+        });
+      }
+
+      console.log(`Found ${chapterPages.length} pages for chapter ${chapterId}`);
       return chapterPages;
+      
     } catch (err) {
+      console.error('Chapter fetch error:', err);
       throw new Error(`Failed to fetch chapter pages: ${err.message}`);
     }
   }
