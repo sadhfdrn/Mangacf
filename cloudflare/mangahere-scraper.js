@@ -228,52 +228,99 @@ class MangaHereScraper {
   parseChapterPages(html) {
     const pages = [];
     
-    // Method 1: Extract from eval function with multiple patterns (optimized)
+    // Method 1: Extract from packed JavaScript without eval (Cloudflare Workers compatible)
     try {
-      const evalMatches = html.match(/eval\(function\(p,a,c,k,e,d\)[^}]+\}[^)]*\)/g);
-      
-      if (evalMatches) {
-        for (const evalMatch of evalMatches) {
+      // Look for packed JavaScript patterns that contain image data
+      const packedPatterns = [
+        // Pattern 1: Direct string arrays in JavaScript
+        /\['(\/\/[^']+\.(?:jpg|jpeg|png|gif|webp)[^']*(?:','\/\/[^']+\.(?:jpg|jpeg|png|gif|webp)[^']*)*?)'\]/g,
+        // Pattern 2: Double quoted arrays  
+        /"(\/\/[^"]+\.(?:jpg|jpeg|png|gif|webp)[^"]*(?:","\/\/[^"]+\.(?:jpg|jpeg|png|gif|webp)[^"]*)*?)"/g,
+        // Pattern 3: Variable assignments with image arrays
+        /(?:images|pages|urls)\s*=\s*\[([^\]]*\.(?:jpg|jpeg|png|gif|webp)[^\]]*)\]/gi
+      ];
+
+      for (const pattern of packedPatterns) {
+        let match;
+        while ((match = pattern.exec(html)) !== null) {
           try {
-            const evalCode = evalMatch.replace('eval', '');
-            const decoded = eval(evalCode);
+            const urlsString = match[1];
+            const urls = urlsString.split(/['"','"]+/).filter(url => {
+              const trimmed = url.trim();
+              return trimmed && trimmed.length > 10 && 
+                     !trimmed.includes('loading.gif') && 
+                     !trimmed.includes('placeholder') &&
+                     (trimmed.includes('.jpg') || trimmed.includes('.jpeg') || 
+                      trimmed.includes('.png') || trimmed.includes('.gif') || 
+                      trimmed.includes('.webp'));
+            });
             
-            // Look for image array patterns
-            const patterns = [
-              /\['([^']+(?:','[^']+)*?)'\]/,  // Standard array format
-              /"([^"]+(?:","[^"]+)*?)"/,      // Double quote format
-              /images\s*=\s*\[([^\]]+)\]/    // images = [...] format
+            if (urls.length > 0) {
+              urls.forEach((relativeUrl, i) => {
+                const cleanUrl = relativeUrl.trim().replace(/^['"]|['"]$/g, '');
+                pages.push({
+                  page: i + 1,
+                  img: cleanUrl.startsWith('//') ? `https:${cleanUrl}` : `https:${cleanUrl}`,
+                  headerForImage: null
+                });
+              });
+              break;
+            }
+          } catch (err) {
+            continue;
+          }
+        }
+        if (pages.length > 0) break;
+      }
+    } catch (error) {
+      console.warn('Failed to parse with pattern matching:', error);
+    }
+    
+    // Method 2: Custom JavaScript unpacker (no eval needed)
+    if (pages.length === 0) {
+      try {
+        const packedMatch = html.match(/eval\(function\(p,a,c,k,e,d\)\{[^}]+\}[^)]*\)/);
+        if (packedMatch) {
+          const unpacked = this.unpackJavaScript(packedMatch[0]);
+          if (unpacked) {
+            // Look for image arrays in unpacked code
+            const imagePatterns = [
+              /\['([^']+(?:','[^']+)*?)'\]/,
+              /"([^"]+(?:","[^"]+)*?)"/,
+              /images\s*=\s*\[([^\]]+)\]/
             ];
             
-            for (const pattern of patterns) {
-              const urlsMatch = decoded.match(pattern);
-              if (urlsMatch) {
-                const urls = urlsMatch[1].split(/['"','"]+/).filter(url => url.trim());
+            for (const pattern of imagePatterns) {
+              const match = unpacked.match(pattern);
+              if (match) {
+                const urls = match[1].split(/['"','"]+/).filter(url => {
+                  const trimmed = url.trim();
+                  return trimmed && trimmed.length > 10 && 
+                         !trimmed.includes('loading.gif') &&
+                         (trimmed.includes('.jpg') || trimmed.includes('.jpeg') || 
+                          trimmed.includes('.png') || trimmed.includes('.gif') || 
+                          trimmed.includes('.webp'));
+                });
+                
                 urls.forEach((relativeUrl, i) => {
-                  if (relativeUrl && relativeUrl.length > 10 && !relativeUrl.includes('loading.gif')) {
-                    pages.push({
-                      page: i + 1,
-                      img: relativeUrl.startsWith('//') ? `https:${relativeUrl}` : `https:${relativeUrl}`,
-                      headerForImage: null
-                    });
-                  }
+                  const cleanUrl = relativeUrl.trim().replace(/^['"]|['"]$/g, '');
+                  pages.push({
+                    page: i + 1,
+                    img: cleanUrl.startsWith('//') ? `https:${cleanUrl}` : `https:${cleanUrl}`,
+                    headerForImage: null
+                  });
                 });
                 break;
               }
             }
-            
-            if (pages.length > 0) break;
-          } catch (innerErr) {
-            // Continue to next eval match
-            continue;
           }
         }
+      } catch (err) {
+        console.warn('JavaScript unpacking failed:', err);
       }
-    } catch (error) {
-      console.warn('Failed to parse with eval method:', error);
     }
-    
-    // Method 2: Extract page images from JavaScript variables (original method)
+
+    // Method 3: Extract page images from JavaScript variables (original method)
     if (pages.length === 0) {
       const scriptMatch = html.match(/var\s+chapterPages\s*=\s*(\[.*?\]);/s);
       if (scriptMatch) {
@@ -294,7 +341,7 @@ class MangaHereScraper {
       }
     }
 
-    // Method 3: Fallback - extract from img tags
+    // Method 4: Fallback - extract from img tags
     if (pages.length === 0) {
       const imgPattern = /<img[^>]*class="[^"]*reader-main-img[^"]*"[^>]*src="([^"]*)"/g;
       let imgMatch;
@@ -309,6 +356,45 @@ class MangaHereScraper {
     }
 
     return pages;
+  }
+
+  // Custom JavaScript unpacker that doesn't use eval()
+  unpackJavaScript(packedCode) {
+    try {
+      // Extract the packed function parameters
+      const match = packedCode.match(/function\(p,a,c,k,e,d\)\{.*?return p\}[^)]*\('([^']*)',(\d+),(\d+),'([^']*)'/);
+      if (!match) return null;
+
+      const [, encoded, base, count, dictionary] = match;
+      const words = dictionary.split('|');
+      
+      // Simple unpacker implementation
+      let decoded = encoded;
+      
+      // Replace encoded numbers with dictionary words
+      for (let i = count - 1; i >= 0; i--) {
+        const regex = new RegExp('\\b' + this.toBase(i, base) + '\\b', 'g');
+        if (words[i]) {
+          decoded = decoded.replace(regex, words[i]);
+        }
+      }
+      
+      return decoded;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // Convert number to different base (for unpacking)
+  toBase(num, base) {
+    if (num === 0) return '0';
+    const charset = '0123456789abcdefghijklmnopqrstuvwxyz';
+    let result = '';
+    while (num > 0) {
+      result = charset[num % base] + result;
+      num = Math.floor(num / base);
+    }
+    return result;
   }
 
   resolveUrl(url) {
