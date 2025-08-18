@@ -228,26 +228,73 @@ class MangaHereScraper {
   parseChapterPages(html) {
     const pages = [];
     
-    // Extract page images from JavaScript variables
-    const scriptMatch = html.match(/var\s+chapterPages\s*=\s*(\[.*?\]);/s);
-    if (scriptMatch) {
-      try {
-        const pagesData = JSON.parse(scriptMatch[1]);
-        for (const pageData of pagesData) {
-          if (pageData.u) {
-            pages.push({
-              img: this.resolveUrl(pageData.u),
-              page: pages.length + 1,
-              headerForImage: null
-            });
+    // Method 1: Extract from eval function with multiple patterns (optimized)
+    try {
+      const evalMatches = html.match(/eval\(function\(p,a,c,k,e,d\)[^}]+\}[^)]*\)/g);
+      
+      if (evalMatches) {
+        for (const evalMatch of evalMatches) {
+          try {
+            const evalCode = evalMatch.replace('eval', '');
+            const decoded = eval(evalCode);
+            
+            // Look for image array patterns
+            const patterns = [
+              /\['([^']+(?:','[^']+)*?)'\]/,  // Standard array format
+              /"([^"]+(?:","[^"]+)*?)"/,      // Double quote format
+              /images\s*=\s*\[([^\]]+)\]/    // images = [...] format
+            ];
+            
+            for (const pattern of patterns) {
+              const urlsMatch = decoded.match(pattern);
+              if (urlsMatch) {
+                const urls = urlsMatch[1].split(/['"','"]+/).filter(url => url.trim());
+                urls.forEach((relativeUrl, i) => {
+                  if (relativeUrl && relativeUrl.length > 10 && !relativeUrl.includes('loading.gif')) {
+                    pages.push({
+                      page: i + 1,
+                      img: relativeUrl.startsWith('//') ? `https:${relativeUrl}` : `https:${relativeUrl}`,
+                      headerForImage: null
+                    });
+                  }
+                });
+                break;
+              }
+            }
+            
+            if (pages.length > 0) break;
+          } catch (innerErr) {
+            // Continue to next eval match
+            continue;
           }
         }
-      } catch (err) {
-        console.warn('Error parsing pages from JavaScript:', err);
+      }
+    } catch (error) {
+      console.warn('Failed to parse with eval method:', error);
+    }
+    
+    // Method 2: Extract page images from JavaScript variables (original method)
+    if (pages.length === 0) {
+      const scriptMatch = html.match(/var\s+chapterPages\s*=\s*(\[.*?\]);/s);
+      if (scriptMatch) {
+        try {
+          const pagesData = JSON.parse(scriptMatch[1]);
+          for (const pageData of pagesData) {
+            if (pageData.u) {
+              pages.push({
+                img: this.resolveUrl(pageData.u),
+                page: pages.length + 1,
+                headerForImage: null
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('Error parsing pages from JavaScript:', err);
+        }
       }
     }
 
-    // Fallback: extract from img tags
+    // Method 3: Fallback - extract from img tags
     if (pages.length === 0) {
       const imgPattern = /<img[^>]*class="[^"]*reader-main-img[^"]*"[^>]*src="([^"]*)"/g;
       let imgMatch;

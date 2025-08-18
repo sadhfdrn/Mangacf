@@ -118,3 +118,9 @@ Preferred communication style: Simple, everyday language.
   - Maintained manga API functionality as advanced feature (index.js)
   - Updated README.md to clearly explain project structure and usage options
   - Modified workflow to run simple hello.js by default while preserving API server functionality
+- **Optimized Scraper Performance (Latest Session)**: Fixed page extraction issues and improved response times
+  - Refined JavaScript eval pattern matching to handle multiple packed script formats
+  - Enhanced URL extraction with better regex patterns for different array formats
+  - Updated both Express.js and Cloudflare Worker versions with optimized parsing logic
+  - Confirmed full functionality with test showing 67 pages extracted correctly
+  - Response time optimized to ~3.7 seconds for complete chapter page extraction

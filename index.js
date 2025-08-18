@@ -134,11 +134,9 @@ class MangaHere {
     const url = `${this.baseUrl}/manga/${chapterId}/1.html`;
 
     try {
-      console.log(`Fetching chapter pages from: ${url}`);
       const { data } = await this.client.get(url, {
         headers: {
           cookie: 'isAdult=1',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         },
       });
 
@@ -152,156 +150,107 @@ class MangaHere {
       }
 
       const html = data;
-      let pagesFound = false;
-
-      // Method 1: Look for direct image URLs in scripts
+      
+      // Method 1: Look for eval function with packed JavaScript (optimized)
       try {
-        const scriptTags = $('script').toArray();
-        for (const scriptTag of scriptTags) {
-          const scriptContent = $(scriptTag).html() || '';
-          
-          // Look for image arrays in various formats
-          if (scriptContent.includes('newImgs') || scriptContent.includes('pageArray') || scriptContent.includes('images')) {
-            console.log('Found potential image data in script');
-            
-            // Try to extract image URLs using regex patterns
-            const imagePatterns = [
-              /"(https:\/\/[^"]*\.(?:jpg|jpeg|png|gif|webp)[^"]*)"/gi,
-              /'(https:\/\/[^']*\.(?:jpg|jpeg|png|gif|webp)[^']*)'/gi,
-              /src\s*=\s*["'](https:\/\/[^"']*\.(?:jpg|jpeg|png|gif|webp)[^"']*)["']/gi
-            ];
-
-            for (const pattern of imagePatterns) {
-              const matches = scriptContent.match(pattern);
-              if (matches && matches.length > 0) {
-                matches.forEach((match, i) => {
-                  const cleanUrl = match.replace(/['"]/g, '').replace('src=', '');
-                  if (cleanUrl.includes('loading.gif') || cleanUrl.includes('placeholder')) {
-                    return; // Skip loading/placeholder images
-                  }
-                  chapterPages.push({
-                    page: i + 1,
-                    img: cleanUrl,
-                    headerForImage: { Referer: url }
-                  });
-                });
-                pagesFound = true;
-                break;
-              }
-            }
-          }
-        }
-      } catch (scriptErr) {
-        console.error('Script parsing method failed:', scriptErr);
-      }
-
-      // Method 2: Look for chapter data in various script formats
-      if (!pagesFound) {
-        try {
-          // Look for eval functions with image data
-          const evalMatch = html.match(/eval\(function\(p,a,c,k,e,d\)[^}]+\}/);
-          if (evalMatch) {
-            console.log('Found eval function, attempting to decode');
+        // Look for the specific eval pattern that contains image data
+        const evalMatches = html.match(/eval\(function\(p,a,c,k,e,d\)[^}]+\}[^)]*\)/g);
+        
+        if (evalMatches) {
+          for (const evalMatch of evalMatches) {
             try {
-              const evalCode = evalMatch[0].replace('eval', '');
+              const evalCode = evalMatch.replace('eval', '');
               const decoded = eval(evalCode);
               
-              // Look for image URLs in decoded content
-              const imageUrls = decoded.match(/https:\/\/[^'",\s]+\.(?:jpg|jpeg|png|gif|webp)/gi);
-              if (imageUrls && imageUrls.length > 0) {
-                imageUrls.forEach((imgUrl, i) => {
-                  if (!imgUrl.includes('loading.gif')) {
-                    chapterPages.push({
-                      page: i + 1,
-                      img: imgUrl,
-                      headerForImage: { Referer: url }
-                    });
-                  }
-                });
-                pagesFound = true;
-              }
-            } catch (evalErr) {
-              console.error('Eval decoding failed:', evalErr);
-            }
-          }
-        } catch (err) {
-          console.error('Eval method failed:', err);
-        }
-      }
-
-      // Method 3: Try pagination approach by fetching multiple pages
-      if (!pagesFound) {
-        try {
-          console.log('Trying pagination method');
-          const pageLinks = $('a[href*="/manga/"]').toArray();
-          const totalPages = Math.min(50, pageLinks.length); // Limit to 50 pages max
-
-          for (let pageNum = 1; pageNum <= Math.max(1, totalPages); pageNum++) {
-            const pageUrl = `${this.baseUrl}/manga/${chapterId}/${pageNum}.html`;
-            
-            try {
-              const { data: pageData } = await this.client.get(pageUrl, {
-                headers: {
-                  cookie: 'isAdult=1',
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                },
-                timeout: 10000
-              });
-
-              const page$ = cheerio.load(pageData);
-              
-              // Look for the main manga image on this page
-              const imgSelectors = [
-                'img#viewer',
-                'img.manga-page',
-                'img[src*=".jpg"]',
-                'img[src*=".png"]',
-                'img[src*=".gif"]',
-                'img[src*=".webp"]'
+              // Look for image array patterns
+              const patterns = [
+                /\['([^']+(?:','[^']+)*?)'\]/,  // Standard array format
+                /"([^"]+(?:","[^"]+)*?)"/,      // Double quote format
+                /images\s*=\s*\[([^\]]+)\]/    // images = [...] format
               ];
-
-              let imageFound = false;
-              for (const selector of imgSelectors) {
-                const img = page$(selector).first();
-                const imgSrc = img.attr('src');
-                
-                if (imgSrc && !imgSrc.includes('loading.gif') && !imgSrc.includes('placeholder')) {
-                  const fullUrl = imgSrc.startsWith('http') ? imgSrc : `https:${imgSrc}`;
-                  chapterPages.push({
-                    page: pageNum,
-                    img: fullUrl,
-                    headerForImage: { Referer: pageUrl }
+              
+              for (const pattern of patterns) {
+                const urlsMatch = decoded.match(pattern);
+                if (urlsMatch) {
+                  const urls = urlsMatch[1].split(/['"','"]+/).filter(url => url.trim());
+                  urls.forEach((relativeUrl, i) => {
+                    if (relativeUrl && relativeUrl.length > 10 && !relativeUrl.includes('loading.gif')) {
+                      chapterPages.push({
+                        page: i + 1,
+                        img: relativeUrl.startsWith('//') ? `https:${relativeUrl}` : `https:${relativeUrl}`,
+                        headerForImage: { Referer: url }
+                      });
+                    }
                   });
-                  imageFound = true;
-                  pagesFound = true;
                   break;
                 }
               }
-
-              if (!imageFound && pageNum === 1) {
-                // If no image found on first page, probably no more pages
-                break;
-              }
-
-              // Small delay to avoid overwhelming the server
-              await new Promise(resolve => setTimeout(resolve, 200));
               
-            } catch (pageErr) {
-              console.error(`Error fetching page ${pageNum}:`, pageErr);
-              if (pageNum === 1) {
-                // If first page fails, break
-                break;
+              if (chapterPages.length > 0) break;
+            } catch (innerErr) {
+              // Continue to next eval match
+              continue;
+            }
+          }
+        }
+      } catch (evalErr) {
+        console.error('Eval method failed:', evalErr);
+      }
+
+      // Method 2: Extract key and use API (fallback)
+      if (chapterPages.length === 0) {
+        try {
+          let sKey = this.extractKey(html);
+          const chapterIdMatch = html.match(/chapterid\s*=\s*(\d+)/);
+          const chapterId = chapterIdMatch ? chapterIdMatch[1] : '';
+
+          if (sKey && chapterId) {
+            const chapterPagesElmnt = $('body > div:nth-child(6) > div > span').children('a');
+            const pages = parseInt(chapterPagesElmnt.last().prev().attr('data-page') || '1');
+            const pageBase = url.substring(0, url.lastIndexOf('/'));
+
+            for (let i = 1; i <= Math.min(pages, 100); i++) {
+              const pageLink = `${pageBase}/chapterfun.ashx?cid=${chapterId}&page=${i}&key=${sKey}`;
+
+              try {
+                const { data: pageData } = await this.client.get(pageLink, {
+                  headers: {
+                    Referer: url,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    cookie: 'isAdult=1',
+                  },
+                  timeout: 10000
+                });
+
+                if (pageData) {
+                  const ds = eval(pageData.replace('eval', ''));
+                  const baseLinkMatch = ds.match(/pix\s*=\s*"([^"]+)"/);
+                  const imageLinkMatch = ds.match(/pvalue\s*=\s*\[?"([^"]+)"/);
+                  
+                  if (baseLinkMatch && imageLinkMatch) {
+                    const baseLink = baseLinkMatch[1];
+                    const imageLink = imageLinkMatch[1];
+                    
+                    chapterPages.push({
+                      page: i,
+                      img: `https:${baseLink}${imageLink}`,
+                      headerForImage: { Referer: url }
+                    });
+                  }
+                }
+              } catch (pageErr) {
+                console.error(`Error fetching page ${i}:`, pageErr);
+                break; // Stop on first error to avoid overwhelming the server
               }
             }
           }
-        } catch (paginationErr) {
-          console.error('Pagination method failed:', paginationErr);
+        } catch (keyErr) {
+          console.error('Key extraction method failed:', keyErr);
         }
       }
 
-      // If still no pages found, add a single loading placeholder
+      // If no pages found, return placeholder
       if (chapterPages.length === 0) {
-        console.log('No pages found, adding fallback');
         chapterPages.push({
           page: 1,
           img: "https://static.mangahere.cc/v20240816/mangahere/images/loading.gif",
@@ -309,11 +258,8 @@ class MangaHere {
         });
       }
 
-      console.log(`Found ${chapterPages.length} pages for chapter ${chapterId}`);
       return chapterPages;
-      
     } catch (err) {
-      console.error('Chapter fetch error:', err);
       throw new Error(`Failed to fetch chapter pages: ${err.message}`);
     }
   }
