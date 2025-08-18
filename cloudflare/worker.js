@@ -13,8 +13,8 @@
 import { MANGAHERE_SCRAPER } from './mangahere-scraper.js';
 import { CBZ_GENERATOR } from './cbz-generator.js';
 
-// Your Catbox user hash
-const CATBOX_USER_HASH = '630d80d5715d80cc0cfaa03ec';
+// Your Catbox user hash - can be set via environment variable
+const CATBOX_USER_HASH = typeof CATBOX_USER_HASH !== 'undefined' ? CATBOX_USER_HASH : '630d80d5715d80cc0cfaa03ec';
 
 // Catbox service for file uploads
 class CatboxService {
@@ -53,12 +53,16 @@ class CatboxService {
   }
 }
 
-const catboxService = new CatboxService(CATBOX_USER_HASH);
+// Initialize catbox service with environment variable support
+let catboxService;
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const { pathname } = url;
+
+    // Check for storage configuration
+    const hasStorageConfig = env.CATBOX_USER_HASH || typeof CATBOX_USER_HASH !== 'undefined';
 
     // CORS headers for all responses
     const corsHeaders = {
@@ -83,7 +87,19 @@ export default {
       } else if (pathname.startsWith('/pages/')) {
         return handlePages(pathname, corsHeaders);
       } else if (pathname.startsWith('/cbz/')) {
-        return handleCBZ(pathname, corsHeaders, request);
+        if (!hasStorageConfig) {
+          return new Response(JSON.stringify({ 
+            error: 'CBZ generation disabled', 
+            message: 'No storage configuration provided. CBZ generation requires CATBOX_USER_HASH environment variable.' 
+          }), {
+            status: 400,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders
+            }
+          });
+        }
+        return handleCBZ(pathname, corsHeaders, request, env);
       } else if (pathname.startsWith('/rename')) {
         return handleRename(url, corsHeaders);
       } else if (pathname === '/health') {
@@ -230,11 +246,16 @@ async function handleDocumentation(corsHeaders) {
             <div class="storage-info">
                 <h3>🚀 Cloudflare Worker Features</h3>
                 <ul>
-                    <li><strong>R2 Object Storage</strong>: Zero egress fees, up to 5TB per file</li>
+                    <li><strong>Catbox Storage</strong>: Simplified file hosting without R2 setup</li>
                     <li><strong>Global Distribution</strong>: Served from 275+ edge locations</li>
-                    <li><strong>48-Hour Retention</strong>: Automatic file cleanup</li>
+                    <li><strong>Optional CBZ Generation</strong>: Requires CATBOX_USER_HASH environment variable</li>
                     <li><strong>High Performance</strong>: Sub-100ms response times globally</li>
                 </ul>
+            </div>
+
+            <div class="note">
+                <h4>📦 CBZ Generation Configuration</h4>
+                <p>To enable CBZ file generation, set the <code>CATBOX_USER_HASH</code> environment variable in your Cloudflare Worker settings. Without this configuration, only the <code>/pages</code> endpoint will work, returning page URLs for viewing.</p>
             </div>
 
             <div class="endpoint">
@@ -257,36 +278,43 @@ GET /info/jigokuraku_kaku_yuuji</div>
 
             <div class="endpoint">
                 <h3><span class="method">GET</span><span class="url">/pages/{mangaId}/{chapterId}</span></h3>
-                <p class="description">Generate CBZ file and return download link (stored in R2)</p>
+                <p class="description">Get all page URLs for a chapter (available without storage configuration)</p>
                 <div class="example">
 GET /pages/jigokuraku_kaku_yuuji/c001
 
 Response:
 {
   "success": true,
-  "downloadUrl": "https://worker.domain.com/download/jigokuraku_kaku_yuuji_c001.cbz",
-  "fileName": "jigokuraku_kaku_yuuji_c001.cbz",
-  "fileSize": "16.26 MB",
   "totalPages": 67,
-  "expiresAt": "2025-08-08T08:46:17.240Z"
+  "pages": [
+    { "page": 1, "img": "https://..." },
+    { "page": 2, "img": "https://..." }
+  ]
 }</div>
-                <a href="/pages/jigokuraku_kaku_yuuji/c001" class="try-link">Try: Generate Chapter 1 CBZ</a>
-            </div>
-
-            <div class="endpoint">
-                <h3><span class="method">GET</span><span class="url">/pages/{mangaId}/{chapterId}</span></h3>
-                <p class="description">Get all page URLs for a chapter (without CBZ generation)</p>
-                <div class="example">
-GET /pages/jigokuraku_kaku_yuuji/c001</div>
-                <a href="/pages/jigokuraku_kaku_yuuji/c001" class="try-link">Try It</a>
+                <a href="/pages/jigokuraku_kaku_yuuji/c001" class="try-link">Try: Get Page URLs</a>
             </div>
 
             <div class="endpoint">
                 <h3><span class="method">GET</span><span class="url">/cbz/{mangaId}/{chapterId}</span></h3>
-                <p class="description">Generate CBZ file and upload to Catbox with download link</p>
+                <p class="description">Generate CBZ file and upload to Catbox (requires CATBOX_USER_HASH)</p>
                 <div class="example">
-GET /cbz/jigokuraku_kaku_yuuji/c001</div>
-                <a href="/cbz/jigokuraku_kaku_yuuji/c001" class="try-link">Try It</a>
+GET /cbz/jigokuraku_kaku_yuuji/c001
+
+With storage configured:
+{
+  "success": true,
+  "downloadUrl": "https://worker.domain.com/rename?url=...",
+  "fileName": "jigokuraku_kaku_yuuji_c001.cbz",
+  "fileSize": "16.26 MB",
+  "totalPages": 67
+}
+
+Without storage:
+{
+  "error": "CBZ generation disabled",
+  "message": "No storage configuration provided..."
+}</div>
+                <a href="/cbz/jigokuraku_kaku_yuuji/c001" class="try-link">Try: Generate CBZ</a>
             </div>
 
             <div class="endpoint">
@@ -446,11 +474,17 @@ async function handlePages(pathname, corsHeaders) {
   }
 }
 
-async function handleCBZ(pathname, corsHeaders, request) {
+async function handleCBZ(pathname, corsHeaders, request, env) {
   const pathParts = pathname.split('/');
   const mangaId = pathParts[2];
   const chapterId = pathParts[3];
   const fileName = `${mangaId}_${chapterId}.cbz`;
+  
+  // Initialize catbox service with environment variable if available
+  if (!catboxService) {
+    const userHash = env.CATBOX_USER_HASH || CATBOX_USER_HASH;
+    catboxService = new CatboxService(userHash);
+  }
   
   try {
     // Get chapter pages

@@ -24,8 +24,9 @@ if (!fs.existsSync(CACHE_DIR)) {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Catbox configuration
-const CATBOX_USER_HASH = '630d80d5715d80cc0cfaa03ec';
+// Catbox configuration - can be set via environment variable
+const CATBOX_USER_HASH = process.env.CATBOX_USER_HASH || '630d80d5715d80cc0cfaa03ec';
+const CBZ_ENABLED = Boolean(process.env.CATBOX_USER_HASH || CATBOX_USER_HASH);
 
 // Middleware
 app.use(express.json());
@@ -480,8 +481,9 @@ app.get('/', (req, res) => {
             <div class="endpoint">
                 <span class="method">GET</span>
                 <div class="url">/cbz/{mangaId}/{chapterId}</div>
-                <p><strong>Description:</strong> Generate CBZ file and upload to Catbox</p>
+                <p><strong>Description:</strong> Generate CBZ file and upload to Catbox (requires configuration)</p>
                 <p class="description">Creates CBZ file, uploads to Catbox, and returns download link with custom filename</p>
+                <p style="color: #e74c3c; font-weight: bold;">⚠️ Requires CATBOX_USER_HASH environment variable</p>
             </div>
             
             <div class="endpoint">
@@ -531,10 +533,22 @@ app.get('/', (req, res) => {
             <p><strong>Rename Response:</strong> Direct file download with custom filename</p>
             <p><strong>Download Response:</strong> Direct CBZ file download (fallback only)</p>
             
+            <h2>🔧 Configuration</h2>
+            
+            <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                <h4 style="margin: 0 0 10px 0; color: #856404;">📦 CBZ Generation Setup (Optional)</h4>
+                <p style="margin: 0;">To enable CBZ file generation, set the <code>CATBOX_USER_HASH</code> environment variable:</p>
+                <ul style="margin: 10px 0 0 20px;">
+                    <li>Without configuration: Only <code>/search</code>, <code>/info</code>, and <code>/pages</code> endpoints work</li>
+                    <li>With configuration: All endpoints including <code>/cbz</code> generation are available</li>
+                    <li>Get your Catbox user hash from <a href="https://catbox.moe" target="_blank">catbox.moe</a> account settings</li>
+                </ul>
+            </div>
+            
             <h2>⚠️ Important Notes</h2>
             
             <ul>
-                <li>CBZ files are automatically uploaded to Catbox for permanent storage</li>
+                <li>CBZ files are automatically uploaded to Catbox for permanent storage (when configured)</li>
                 <li>Download links are cached locally for instant response on repeat requests</li>
                 <li>First request creates and uploads the file, subsequent requests are instant</li>
                 <li>Files are streamed directly from Catbox with your preferred filename</li>
@@ -623,6 +637,14 @@ app.get('/pages/:mangaId/:chapterId', async (req, res) => {
 
 // CBZ endpoint - generates CBZ file and uploads to Catbox
 app.get('/cbz/:mangaId/:chapterId', async (req, res) => {
+  // Check if CBZ generation is enabled
+  if (!CBZ_ENABLED) {
+    return res.status(400).json({ 
+      error: 'CBZ generation disabled', 
+      message: 'No storage configuration provided. CBZ generation requires CATBOX_USER_HASH environment variable.' 
+    });
+  }
+
   try {
     const { mangaId, chapterId } = req.params;
     const fullChapterId = `${mangaId}/${chapterId}`;

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a MangaHere API server built with Express.js that provides endpoints for searching manga, getting detailed information, viewing page URLs, and downloading chapters as CBZ files. The API has been restructured to separate page viewing from CBZ generation functionality for better modularity.
+This project contains a minimal JavaScript program that outputs "hello world" to the console (hello.js) as the main entry point, along with an advanced MangaHere API server (index.js) built with Express.js. The API provides endpoints for searching manga, getting detailed information, viewing page URLs, and downloading chapters as CBZ files. A Cloudflare Worker version is also included for serverless deployment.
 
 ## User Preferences
 
@@ -11,10 +11,12 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### Core Structure
-- **Entry Point**: `index.js` - Express.js server with MangaHere scraper
-- **Runtime Environment**: Node.js 20 with Express.js framework
-- **Architecture Pattern**: REST API server with web scraping capabilities
-- **Port**: Server runs on port 5000 (0.0.0.0 for external access)
+- **Main Program**: `hello.js` - Simple hello world console output
+- **Express.js Version**: `index.js` - Express.js server with MangaHere scraper
+- **Cloudflare Worker Version**: `cloudflare/` folder containing worker implementation
+- **Runtime Environment**: Node.js 20 with Express.js framework (main), Cloudflare Workers runtime (worker)
+- **Architecture Pattern**: Simple console program (main), REST API server with web scraping capabilities (advanced)
+- **Port**: Server runs on port 5000 (0.0.0.0 for external access) when using index.js
 
 ### API Endpoints
 - **GET /** - HTML documentation page with examples
@@ -50,11 +52,12 @@ Preferred communication style: Simple, everyday language.
 
 ## Cloudflare Worker Compatibility
 
-### **Worker Architecture**
-- **Main File**: `worker.js` - Cloudflare Worker entry point with ES6 modules
-- **Scraper Module**: `mangahere-scraper.js` - Worker-compatible scraper using native fetch API
-- **CBZ Generator**: `cbz-generator.js` - Pure JavaScript ZIP creation without Node.js dependencies
+### **Worker Architecture (in /cloudflare folder)**
+- **Main File**: `cloudflare/worker.js` - Cloudflare Worker entry point with ES6 modules
+- **Scraper Module**: `cloudflare/mangahere-scraper.js` - Worker-compatible scraper using native fetch API
+- **CBZ Generator**: `cloudflare/cbz-generator.js` - Pure JavaScript ZIP creation without Node.js dependencies
 - **Storage Strategy**: Catbox.moe integration for permanent file hosting (simplified deployment)
+- **Separate Configuration**: Independent package.json and wrangler.toml in cloudflare folder
 
 ### **Catbox Integration (Current)**
 - **File Hosting**: Direct upload to Catbox.moe with user hash `630d80d5715d80cc0cfaa03ec`
@@ -64,8 +67,9 @@ Preferred communication style: Simple, everyday language.
 - **One-Command Deploy**: Simply `npx wrangler deploy` with no setup
 
 ### **Deployment Files**
-- `wrangler.toml` - Simplified configuration (no R2/KV bindings needed)
-- `worker-package.json` - Package configuration for Worker deployment
+- `cloudflare/wrangler.toml` - Simplified configuration (no R2/KV bindings needed)
+- `cloudflare/package.json` - Package configuration for Worker deployment
+- `cloudflare/README.md` - Complete setup and deployment guide
 - `SIMPLE_DEPLOY.md` - Ultra-simple deployment guide (one command)
 - `CLOUDFLARE_DEPLOYMENT.md` - Legacy R2/KV deployment guide (for reference)
 
@@ -99,3 +103,18 @@ Preferred communication style: Simple, everyday language.
     - Eliminates delay on repeat requests
 - **Added deployment guides**: Comprehensive instructions for Cloudflare Workers deployment
 - **Implemented native ZIP creation**: Pure JavaScript CBZ generation without Node.js dependencies
+- **Restructured for Cloudflare Workers (Current Session)**: Created dedicated `cloudflare/` folder
+  - Moved all Cloudflare Worker files to separate directory for better organization
+  - Created independent package.json and configuration files in cloudflare folder
+  - Added comprehensive README.md with setup instructions for Cloudflare deployment
+- **Added Optional CBZ Generation (Current Session)**: Both Express.js and Worker versions support optional CBZ
+  - CBZ generation now requires CATBOX_USER_HASH environment variable
+  - Without configuration: Only /search, /info, and /pages endpoints work
+  - With configuration: All endpoints including /cbz generation are available
+  - Updated documentation to reflect optional functionality in both versions
+  - Added clear error messages when CBZ generation is requested without proper configuration
+- **Project Structure Clarification (Current Session)**: Restored simple hello world as main entry point
+  - Created hello.js as the primary program outputting "hello world" to console
+  - Maintained manga API functionality as advanced feature (index.js)
+  - Updated README.md to clearly explain project structure and usage options
+  - Modified workflow to run simple hello.js by default while preserving API server functionality

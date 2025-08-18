@@ -14,16 +14,18 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "MangaHere Express API"
+args = "Hello World"
 
 [[workflows.workflow]]
-name = "MangaHere Express API"
+name = "Hello World"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "node index.js"
-waitForPort = 5000
+args = "node hello.js"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [[ports]]
 localPort = 5000

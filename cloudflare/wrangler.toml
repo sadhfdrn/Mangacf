@@ -1,0 +1,13 @@
+name = "mangahere-api"
+main = "worker.js"
+compatibility_date = "2024-08-01"
+
+# Catbox integration - no additional storage needed
+# Just uses Catbox.moe for file hosting with your user hash
+
+# Compatibility flags
+compatibility_flags = ["nodejs_compat"]
+
+# Environment variables (set with: npx wrangler secret put VARIABLE_NAME)
+# CATBOX_USER_HASH - Optional: Enables CBZ generation and file uploads
+# Get your hash from https://catbox.moe account settings

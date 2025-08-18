@@ -1,274 +1,95 @@
-# 🍜 MangaHere API
+# JavaScript Project
 
-A comprehensive manga scraper API that provides endpoints for searching manga, getting detailed information, and downloading chapters as CBZ files. Available in both Express.js and Cloudflare Worker versions.
+A minimal JavaScript program that outputs "hello world" to the console, with additional manga API functionality.
 
-## ✨ Features
+## Quick Start
 
-- **Search Manga** - Find manga by title with pagination support
-- **Detailed Info** - Get manga information including chapter lists
-- **CBZ Generation** - Download manga chapters as comic book archives
-- **Auto Cleanup** - Files automatically expire after 48 hours
-- **Global Distribution** - Cloudflare Worker version served from 275+ edge locations
-- **Zero Egress Fees** - R2 storage with no bandwidth costs
-
-## 🚀 Quick Start
-
-### Express.js Version (Current)
-
+### Simple Hello World
 ```bash
-# Start the server
-npm start
-
-# API will be available at http://localhost:5000
+node hello.js
 ```
+This outputs "hello world" to the console.
 
-### Cloudflare Worker Version
-
+### Advanced Manga API
 ```bash
-# Install Wrangler CLI
-npm install -g wrangler
+node index.js
+```
+This starts a full-featured MangaHere API server with web scraping capabilities.
 
-# Setup Cloudflare resources
-wrangler r2 bucket create manga-storage
-wrangler kv:namespace create "MANGA_KV"
+## Project Structure
 
-# Deploy to Cloudflare
-wrangler publish
+```
+.
+├── hello.js              # Simple hello world program (main)
+├── index.js               # Express.js manga API server
+├── cloudflare/            # Cloudflare Worker version
+│   ├── worker.js          # Worker entry point
+│   ├── package.json       # Worker dependencies
+│   ├── wrangler.toml      # Worker configuration
+│   ├── deploy.sh          # Deployment script
+│   └── README.md          # Worker setup guide
+├── downloads/             # CBZ file storage
+├── cache/                 # Catbox URL cache
+└── replit.md              # Project documentation
 ```
 
-## 📚 API Endpoints
+## Features
 
-### Search Manga
-```http
-GET /search/{query}?page={page}
-```
+### Simple Version (hello.js)
+- Outputs "hello world" to console
+- No dependencies required
+- Minimal implementation
 
-**Example:**
-```bash
-curl "http://localhost:5000/search/jigokuraku"
-```
+### Advanced Version (index.js)
+- Full manga scraping API
+- Optional CBZ generation
+- Catbox file hosting integration
+- Web interface with documentation
 
-### Get Manga Information
-```http
-GET /info/{mangaId}
-```
-
-**Example:**
-```bash
-curl "http://localhost:5000/info/jigokuraku_kaku_yuuji"
-```
-
-### Generate CBZ File
-```http
-GET /pages/{mangaId}/{chapterId}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "downloadUrl": "http://localhost:5000/download/jigokuraku_kaku_yuuji_c001.cbz",
-  "fileName": "jigokuraku_kaku_yuuji_c001.cbz",
-  "fileSize": "16.26 MB",
-  "totalPages": 67,
-  "expiresAt": "2025-08-08T08:46:17.240Z"
-}
-```
-
-### Download CBZ File
-```http
-GET /download/{fileName}
-```
-
-## 🏗️ Architecture
-
-### Express.js Version
-- **Runtime**: Node.js with Express.js framework
-- **Storage**: Local file system with automatic cleanup
-- **Dependencies**: axios, cheerio, archiver
-- **Port**: 5000 (configurable)
-
-### Cloudflare Worker Version  
-- **Runtime**: Cloudflare Workers (V8 isolates)
-- **Storage**: R2 Object Storage + Workers KV
-- **Dependencies**: Zero external dependencies
-- **Global**: 275+ edge locations worldwide
-
-## 💾 Storage Solutions
-
-### Local Storage (Express.js)
-- Files stored in `/downloads` directory
-- 48-hour automatic expiration
-- Hourly cleanup process
-- Size monitoring and management
-
-### Cloudflare Storage (Worker)
-- **R2 Object Storage**: CBZ files (up to 5TB each)
-- **Workers KV**: Metadata caching (global distribution)
-- **Zero egress fees**: No bandwidth charges
-- **Auto-scaling**: Handles traffic spikes automatically
-
-## 🛠️ Development
-
-### Project Structure
-```
-├── index.js                 # Express.js server
-├── worker.js                # Cloudflare Worker entry point
-├── mangahere-scraper.js     # Worker-compatible scraper
-├── cbz-generator.js         # Pure JavaScript ZIP creation
-├── wrangler.toml           # Cloudflare Worker configuration
-├── CLOUDFLARE_DEPLOYMENT.md # Deployment guide
-└── consumet.ts/            # Original scraper library
-```
-
-### Running Locally
-```bash
-# Express.js version
-npm start
-
-# Cloudflare Worker (development)
-wrangler dev
-```
-
-### Testing
-```bash
-# Health check
-curl http://localhost:5000/health
-
-# Search test
-curl "http://localhost:5000/search/one%20piece"
-
-# Info test  
-curl "http://localhost:5000/info/jigokuraku_kaku_yuuji"
-
-# CBZ generation test
-curl "http://localhost:5000/pages/jigokuraku_kaku_yuuji/c001"
-```
-
-## 🌍 Deployment Options
-
-### 1. Replit Deployment
-- Click the "Deploy" button in Replit
-- Automatic SSL and custom domain support
-- Zero configuration required
-
-### 2. Cloudflare Workers
-- Follow instructions in `CLOUDFLARE_DEPLOYMENT.md`
+### Cloudflare Worker Version (cloudflare/)
+- Serverless deployment
 - Global edge distribution
-- Pay-per-use pricing model
+- Optional CBZ generation
+- Zero configuration deployment
 
-### 3. Traditional Hosting
-- Deploy Express.js version to any Node.js hosting
-- Requires file system storage support
-- Configure port and environment variables
+## Configuration
 
-## 💰 Cost Analysis
+### Basic Usage
+No configuration needed for the simple hello world program.
 
-### Cloudflare Workers (Recommended)
-- **Free Tier**: 100k requests/day, 10GB R2 storage
-- **Paid Scaling**: $0.50/million requests, $0.015/GB storage
-- **Zero Egress**: No bandwidth charges
-- **Global CDN**: Included
+### Advanced Features
+Set `CATBOX_USER_HASH` environment variable to enable CBZ generation:
+- Get your hash from [catbox.moe](https://catbox.moe) account settings
+- Without it: Only search, info, and pages endpoints work
+- With it: Full CBZ generation and download capabilities
 
-### Traditional Hosting
-- **Compute**: Variable based on provider
-- **Storage**: Local or cloud storage costs
-- **Bandwidth**: Typically charged per GB
-- **CDN**: Additional cost if needed
+## API Endpoints (Advanced Version)
 
-## 🔧 Configuration
+- `GET /` - API documentation
+- `GET /search/{query}` - Search manga
+- `GET /info/{mangaId}` - Get manga details
+- `GET /pages/{mangaId}/{chapterId}` - Get page URLs
+- `GET /cbz/{mangaId}/{chapterId}` - Generate CBZ files (requires configuration)
 
-### Environment Variables
+## Deployment
+
+### Local Development
 ```bash
-# Express.js version
-PORT=5000                    # Server port
-NODE_ENV=production          # Environment mode
-CLEANUP_INTERVAL=3600000     # Cleanup interval (1 hour)
+# Simple version
+node hello.js
 
-# Cloudflare Worker
-ENVIRONMENT=production       # Worker environment
-MAX_FILE_SIZE=100MB         # Maximum CBZ size
+# API server
+node index.js
 ```
 
-### Customization
-- Modify cleanup intervals in respective files
-- Adjust rate limiting and concurrent downloads
-- Configure CORS headers for different origins
-- Add authentication layers if needed
-
-## 📈 Performance
-
-### Express.js Benchmarks
-- **Concurrent Requests**: 100+ simultaneous downloads
-- **File Generation**: ~30 seconds for 50-page chapters  
-- **Memory Usage**: ~200MB baseline + active downloads
-- **Storage**: Automatic cleanup prevents accumulation
-
-### Cloudflare Worker Benefits
-- **Response Time**: Sub-100ms globally
-- **Scalability**: Auto-scaling to millions of requests
-- **Availability**: 99.99% uptime SLA
-- **Edge Caching**: Intelligent request routing
-
-## 🛡️ Security Features
-
-### Rate Limiting
-- Built-in protection against abuse
-- Configurable request limits
-- IP-based throttling available
-
-### Data Protection
-- No persistent user data storage
-- Automatic file expiration (48 hours)
-- CORS headers for browser security
-- Input validation and sanitization
-
-### Access Control
-- Optional authentication layer support
-- IP allowlist/blocklist capability
-- Request logging for monitoring
-
-## 🐛 Troubleshooting
-
-### Common Issues
-1. **Files not downloading**: Check network connectivity and manga availability
-2. **Worker deployment fails**: Verify R2 bucket and KV namespace setup
-3. **Express server crashes**: Check disk space and memory usage
-4. **CBZ files corrupted**: Verify image URLs and download completion
-
-### Debug Tools
+### Cloudflare Workers
 ```bash
-# Express.js logs
-npm start | grep ERROR
-
-# Worker logs  
-wrangler tail
-
-# File system check
-du -sh downloads/
-
-# Network test
-curl -I http://localhost:5000/health
+cd cloudflare
+./deploy.sh
 ```
 
-## 📝 Contributing
+Follow the interactive deployment script for easy setup.
 
-1. Fork the repository
-2. Create a feature branch
-3. Test both Express.js and Worker versions
-4. Submit a pull request with detailed description
+## License
 
-## 📄 License
-
-MIT License - see LICENSE file for details
-
-## 🙏 Acknowledgments
-
-- **consumet.ts**: Original scraper library foundation
-- **MangaHere**: Manga source provider
-- **Cloudflare**: Global edge infrastructure
-- **Express.js**: Web framework foundation
-
----
-
-**Note**: This API is for educational purposes. Please respect copyright laws and website terms of service when using manga content.
+MIT
